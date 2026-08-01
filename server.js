@@ -133,10 +133,26 @@ app.post("/api/locations", async (req, res) => {
     const device = pickDeviceFields(req.body);
 
     // Geocode the first fix; live pings stay as coordinates to avoid rate limits.
-    const exactLocation =
+    const baseLocation =
       type === "live"
         ? `${latitude}, ${longitude}`
         : await reverseGeocode(latitude, longitude);
+
+    // Keep phone identity visible even if Apps Script still has the old 7 columns.
+    const deviceSummary = [
+      device.deviceName && `Device: ${device.deviceName}`,
+      device.deviceId && `ID: ${device.deviceId.slice(0, 8)}`,
+      device.model && device.model !== "Unknown" ? device.model : "",
+      device.os,
+      device.browser,
+      device.screen,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    const exactLocation = deviceSummary
+      ? `${baseLocation} · ${deviceSummary}`
+      : baseLocation;
 
     const saved = await saveLocation({
       latitude,
