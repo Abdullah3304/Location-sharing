@@ -1,12 +1,17 @@
 /**
  * Express server for the location-sharing app.
  * Serves static frontend files and exposes a small JSON API.
+ * On each save: reverse-geocode + append to Google Sheets (if configured).
  */
+
+require("dotenv").config();
 
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const { getLocations, saveLocation } = require("./lib/storage");
+const { reverseGeocode } = require("./lib/geocode");
+const { appendLocationToSheet } = require("./lib/googleSheets");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,6 +63,7 @@ app.get("/api/locations", async (_req, res) => {
 /**
  * POST /api/locations — store a location after the user granted permission.
  * Expected body: { latitude, longitude, accuracy, timestamp }
+ * Also writes Latitude, Longitude, Exact Location to Google Sheets when configured.
  */
 app.post("/api/locations", async (req, res) => {
   const validationError = validateLocationBody(req.body);
@@ -66,7 +72,32 @@ app.post("/api/locations", async (req, res) => {
   }
 
   try {
-    const saved = await saveLocation(req.body);
+    const { latitude, longitude, accuracy, timestamp } = req.body;
+
+    // Turn coordinates into a readable street-level address.
+    const exactLocation = await reverseGeocode(latitude, longitude);
+
+    const saved = await saveLocation({
+      latitude,
+      longitude,
+      accuracy,
+      timestamp,
+      exactLocation,
+    });
+
+    // Push the same row into Google Sheets (webhook or Sheets API).
+    try {
+      const sheetResult = await appendLocationToSheet(saved);
+      if (sheetResult?.skipped) {
+        console.warn("Saved locally only — Google Sheets webhook not set.");
+      } else {
+        console.log("Appended location to Google Sheets:", sheetResult.mode);
+      }
+    } catch (sheetError) {
+      // Keep the API successful even if Sheets fails; data is still in JSON.
+      console.error("Google Sheets append failed:", sheetError);
+    }
+
     res.status(201).json({ ok: true, location: saved });
   } catch (error) {
     console.error("Failed to save location:", error);
@@ -84,6 +115,9 @@ app.use("/api", (_req, res) => {
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Location Sharing running at http://localhost:${PORT}`);
+    if (!process.env.GOOGLE_SHEETS_WEBHOOK_URL && !process.env.GOOGLE_SHEET_ID) {
+      console.log("Tip: set GOOGLE_SHEETS_WEBHOOK_URL — see GOOGLE_SHEETS_SETUP.md");
+    }
   });
 }
 

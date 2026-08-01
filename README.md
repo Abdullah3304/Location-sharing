@@ -1,15 +1,14 @@
 # PinTrail — Location Sharing
 
-A full-stack web app that asks for the user’s location with the browser **Geolocation API**, sends it to a **Node.js + Express** backend after permission is granted, stores it in a **JSON file**, and lets you view every saved pin.
+A full-stack web app. When the user clicks **Press me to continue**, the browser Geolocation permission prompt appears. If granted, coordinates are saved silently to the **Node.js + Express** backend (JSON file). The page never displays location details or a “location shared” message.
 
 ## Features
 
 - Separate frontend files: HTML, CSS, and JavaScript
-- Location is requested only after the user clicks **Share my location** (browser permission prompt)
+- Location is requested only after the user clicks **Press me to continue**
 - Coordinates are sent with `fetch()` only when permission is granted
-- Friendly message when permission is denied
+- No location data or sharing confirmation shown in the UI
 - Saved fields: `latitude`, `longitude`, `accuracy`, `timestamp`
-- View page listing all stored locations
 - Ready for local development, **Render**, and **Vercel**
 
 ## Project structure
@@ -19,12 +18,9 @@ A full-stack web app that asks for the user’s location with the browser **Geol
 ├── api/index.js          # Vercel serverless entry
 ├── lib/storage.js        # JSON file read/write helpers
 ├── public/
-│   ├── index.html        # Share location page
-│   ├── locations.html    # View stored locations
+│   ├── index.html        # Continue page
 │   ├── css/styles.css
-│   └── js/
-│       ├── app.js
-│       └── locations.js
+│   └── js/app.js
 ├── server.js             # Express app + API
 ├── package.json
 ├── vercel.json
@@ -57,11 +53,10 @@ npm run dev
 
 ### Try the flow
 
-1. On the home page, click **Share my location**.
+1. On the home page, click **Press me to continue**.
 2. Approve the browser permission prompt.
-3. Confirm the success message and coordinate details.
-4. Open **View locations** to see the saved entry.
-5. Deny permission once to confirm the friendly denial message.
+3. The page shows a generic “You’re all set” message (no coordinates).
+4. Confirm data was stored via `GET /api/locations` or in `data/locations.json`.
 
 ## API
 
@@ -80,7 +75,7 @@ Body (JSON):
 
 ### `GET /api/locations`
 
-Returns all stored locations (newest first).
+Returns all stored locations (newest first). Useful for checking saved data; there is no public view page.
 
 Data is written to `data/locations.json` locally (created automatically).
 
@@ -108,11 +103,10 @@ npx vercel
 
 **Important:** Vercel’s filesystem is ephemeral. Saved locations may not persist across cold starts or instances. For durable production storage on Vercel, swap the JSON file for a hosted database (for example Neon Postgres or Vercel Blob). Local and Render deployments keep the simple JSON file approach.
 
-## Notes on privacy & permissions
+## Notes on permissions
 
-- The app never reads GPS coordinates before the browser grants permission.
-- `navigator.geolocation.getCurrentPosition()` triggers the permission prompt.
-- Denial is handled in the error callback with a clear, non-alarming message.
+- The browser still shows its native location permission prompt (required by the Geolocation API).
+- Coordinates are never shown on the website after save.
 - Use HTTPS in production; most browsers require a secure context for geolocation (localhost is allowed for development).
 
 ## License
