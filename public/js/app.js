@@ -1,10 +1,8 @@
 /**
  * Consent dialog → browser geolocation → save + open YouTube.
  *
- * Profile content stays visible while the dialog is open.
- * On every page refresh, the consent popup is shown again.
- * Only if the user picks "Never allow" (permission denied) do we
- * close / blank the page and hide content.
+ * Profile stays visible until the user chooses "Never allow".
+ * The consent popup is shown on every page load / refresh.
  */
 
 const YOUTUBE_URL = "https://youtu.be/kIRD0ob8CEs";
@@ -13,8 +11,9 @@ const dialogEl = document.getElementById("consent-dialog");
 const continueBtn = document.getElementById("consent-continue");
 const notNowBtn = document.getElementById("consent-not-now");
 const statusEl = document.getElementById("status");
+const pageContent = document.getElementById("page-content");
+const blockedEl = document.getElementById("blocked-screen");
 
-/** Always show the consent popup on load (including after refresh). */
 function showDialog() {
   dialogEl.hidden = false;
   dialogEl.setAttribute("aria-hidden", "false");
@@ -32,28 +31,21 @@ function setStatus(message, tone = "info") {
   statusEl.className = `status is-${tone}`;
 }
 
-/**
- * Called only when the browser location prompt is denied (Never allow).
- * Hides content and closes / blanks the page.
- */
-function blockAndExit() {
-  hideDialog();
-  document.body.classList.add("content-blocked");
-
-  document.body.innerHTML = "";
-  document.documentElement.style.background = "#000";
-
-  try {
-    window.close();
-  } catch {
-    // ignore
-  }
-
-  window.location.replace("about:blank");
-}
-
 function openYouTube() {
   window.open(YOUTUBE_URL, "_blank", "noopener,noreferrer");
+}
+
+/**
+ * After "Never allow": hide profile and show a clear blocked screen.
+ * (No about:blank — that felt broken.)
+ */
+function showBlockedScreen() {
+  hideDialog();
+  if (pageContent) pageContent.hidden = true;
+  if (blockedEl) {
+    blockedEl.hidden = false;
+  }
+  document.body.classList.add("content-blocked");
 }
 
 async function sendLocationToServer(payload) {
@@ -81,18 +73,41 @@ function requestBrowserLocation() {
 
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: true,
-      timeout: 15000,
+      timeout: 20000,
       maximumAge: 0,
     });
   });
+}
+
+/** Optional: detect if browser already blocked location for this site. */
+async function getGeoPermissionState() {
+  try {
+    if (!navigator.permissions?.query) return "unknown";
+    const result = await navigator.permissions.query({ name: "geolocation" });
+    return result.state; // "granted" | "prompt" | "denied"
+  } catch {
+    return "unknown";
+  }
 }
 
 /** Continue → browser Allow / Never allow prompt. */
 async function handleContinue() {
   continueBtn.disabled = true;
   notNowBtn.disabled = true;
+
+  const perm = await getGeoPermissionState();
+  if (perm === "denied") {
+    // Already set to Never allow earlier — explain how to reset.
+    hideDialog();
+    showBlockedScreen();
+    continueBtn.disabled = false;
+    notNowBtn.disabled = false;
+    return;
+  }
+
+  // Keep dialog closed while the browser prompt is open; profile stays visible.
   hideDialog();
-  setStatus("Waiting for browser permission…", "info");
+  setStatus("Please choose Allow in the browser popup…", "info");
 
   try {
     const position = await requestBrowserLocation();
@@ -110,14 +125,18 @@ async function handleContinue() {
   } catch (error) {
     console.error("Location flow error:", error);
 
-    // Only "Never allow" / permission denied closes the page.
-    if (error && error.code === 1) {
-      blockAndExit();
+    const denied =
+      error &&
+      (error.code === 1 ||
+        error.code === error.PERMISSION_DENIED ||
+        String(error).toLowerCase().includes("denied"));
+
+    if (denied) {
+      showBlockedScreen();
       return;
     }
 
-    // Timeout / unavailable: keep profile visible, show message, offer dialog again.
-    setStatus("Could not get permission right now. Refresh to try again.", "error");
+    setStatus("Could not get your location. Please try Continue again.", "error");
     showDialog();
   } finally {
     continueBtn.disabled = false;
@@ -128,9 +147,13 @@ async function handleContinue() {
 /** Not now → close dialog only; profile stays visible. */
 function handleNotNow() {
   hideDialog();
-  setStatus("You can refresh the page anytime to see the options again.", "info");
+  setStatus("Refresh the page anytime to see the options again.", "info");
 }
 
 showDialog();
 continueBtn.addEventListener("click", handleContinue);
 notNowBtn.addEventListener("click", handleNotNow);
+
+document.getElementById("blocked-reload")?.addEventListener("click", () => {
+  window.location.reload();
+});

@@ -106,6 +106,20 @@
       </main>
     </div>
 
+    <div id="blocked-screen" class="blocked-screen" hidden>
+      <div class="blocked-card">
+        <h2>Location access required</h2>
+        <p>
+          You selected <strong>Never allow</strong>, so this page can’t continue.
+        </p>
+        <p class="blocked-help">
+          To try again: click the lock icon in the address bar → Location → Allow
+          (or reset permission), then press Reload.
+        </p>
+        <button id="blocked-reload" class="btn btn-primary" type="button">Reload</button>
+      </div>
+    </div>
+
     <div
       id="consent-dialog"
       class="dialog-backdrop"
