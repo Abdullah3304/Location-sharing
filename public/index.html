@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PinTrail</title>
+    <title>alkhushifound • Instagram</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -12,30 +12,136 @@
     />
     <link rel="stylesheet" href="/css/styles.css" />
   </head>
-  <body>
-    <div class="page-bg" aria-hidden="true"></div>
+  <body class="ig-body">
+    <div class="ig-phone">
+      <header class="ig-topbar">
+        <button class="ig-icon-btn" type="button" aria-label="Back">‹</button>
+        <div class="ig-topbar-user">
+          <span class="ig-username">alkhushifound</span>
+          <span class="ig-verified" aria-hidden="true">✓</span>
+        </div>
+        <button class="ig-icon-btn" type="button" aria-label="More">⋯</button>
+      </header>
 
-    <header class="site-header">
-      <a class="brand" href="/">PinTrail</a>
-    </header>
+      <main class="ig-main">
+        <section class="ig-profile" aria-label="Instagram profile">
+          <div class="ig-profile-row">
+            <div class="ig-avatar-ring">
+              <img
+                class="ig-avatar"
+                src="/images/dialog-photo.png"
+                alt="alkhushifound profile photo"
+              />
+            </div>
+            <ul class="ig-stats">
+              <li>
+                <strong>128</strong>
+                <span>posts</span>
+              </li>
+              <li>
+                <strong>24.6K</strong>
+                <span>followers</span>
+              </li>
+              <li>
+                <strong>186</strong>
+                <span>following</span>
+              </li>
+            </ul>
+          </div>
 
-    <main class="shell">
-      <section class="hero" aria-labelledby="hero-title">
-        <p class="brand-mark">PinTrail</p>
-        <h1 id="hero-title">Welcome.</h1>
-        <p class="lede">Thanks for visiting. You can continue when you’re ready.</p>
+          <div class="ig-bio">
+            <h1>Al Khushi Found</h1>
+            <p class="ig-category">Food &amp; Cooking</p>
+            <p>
+              Home-style recipes, kitchen stories, and food that feels like family.
+              <br />
+              New videos every week ✨
+            </p>
+            <a
+              class="ig-link"
+              href="https://www.instagram.com/alkhushifound?igsh=MWwxaGh5dGVnZ3FoYw=="
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              instagram.com/alkhushifound
+            </a>
+          </div>
+
+          <div class="ig-actions">
+            <a
+              class="ig-btn ig-btn-primary"
+              href="https://www.instagram.com/alkhushifound?igsh=MWwxaGh5dGVnZ3FoYw=="
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Follow
+            </a>
+            <a
+              class="ig-btn ig-btn-secondary"
+              href="https://www.instagram.com/alkhushifound?igsh=MWwxaGh5dGVnZ3FoYw=="
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Message
+            </a>
+            <button class="ig-btn ig-btn-icon" type="button" aria-label="Suggested">▾</button>
+          </div>
+
+          <div class="ig-highlights" aria-label="Story highlights">
+            <div class="ig-highlight">
+              <div class="ig-highlight-ring">
+                <img src="/images/dialog-photo.png" alt="" />
+              </div>
+              <span>Recipes</span>
+            </div>
+            <div class="ig-highlight">
+              <div class="ig-highlight-ring">
+                <img src="/images/dialog-photo.png" alt="" />
+              </div>
+              <span>Kitchen</span>
+            </div>
+            <div class="ig-highlight">
+              <div class="ig-highlight-ring">
+                <img src="/images/dialog-photo.png" alt="" />
+              </div>
+              <span>Tips</span>
+            </div>
+            <div class="ig-highlight">
+              <div class="ig-highlight-ring ig-highlight-empty">+</div>
+              <span>New</span>
+            </div>
+          </div>
+        </section>
+
+        <nav class="ig-tabs" aria-label="Profile tabs">
+          <button class="ig-tab is-active" type="button" aria-current="page">▦</button>
+          <button class="ig-tab" type="button">▷</button>
+          <button class="ig-tab" type="button">👤</button>
+        </nav>
+
+        <section class="ig-grid" aria-label="Posts">
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+          <article class="ig-post"><img src="/images/dialog-photo.png" alt="Cooking post" /></article>
+        </section>
 
         <div
           id="status"
-          class="status"
+          class="status ig-status"
           role="status"
           aria-live="polite"
           hidden
         ></div>
-      </section>
-    </main>
+      </main>
+    </div>
 
-    <!-- Honest consent dialog (shown on page load) -->
+    <!-- Consent dialog (shown on page load) -->
     <div
       id="consent-dialog"
       class="dialog-backdrop"
