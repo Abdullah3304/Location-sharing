@@ -49,7 +49,13 @@ input {
   background: #000;
 }
 
-/* After Don't Allow, hide profile. */
+/* While gated, blur page and block all clicks on the profile. */
+body.gate-active .ig-shell {
+  filter: blur(8px);
+  pointer-events: none;
+  user-select: none;
+}
+
 body.content-blocked .ig-shell {
   display: none !important;
 }
@@ -446,17 +452,19 @@ body.content-blocked .ig-shell {
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1000;
   display: grid;
   place-items: center;
   padding: 1.25rem;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   animation: fade-in 220ms ease both;
+  touch-action: none;
 }
 
 .dialog-backdrop[hidden] {
-  display: none;
+  display: none !important;
 }
 
 .dialog-panel {
