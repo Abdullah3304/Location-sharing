@@ -1,0 +1,23 @@
+{
+  "name": "location-sharing",
+  "version": "1.0.0",
+  "description": "Full-stack location-sharing web app using the browser Geolocation API and Express",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "geolocation",
+    "express",
+    "location-sharing"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

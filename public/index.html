@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PinTrail — Share Your Location</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <div class="page-bg" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="/">PinTrail</a>
+      <nav class="nav">
+        <a class="nav-link is-active" href="/">Share</a>
+        <a class="nav-link" href="/locations.html">View locations</a>
+      </nav>
+    </header>
+
+    <main class="shell">
+      <section class="hero" aria-labelledby="hero-title">
+        <p class="brand-mark">PinTrail</p>
+        <h1 id="hero-title">Share where you are, when you choose.</h1>
+        <p class="lede">
+          We only ask for your location after you tap the button below and approve
+          the browser permission prompt.
+        </p>
+
+        <div class="actions">
+          <button id="share-btn" class="btn btn-primary" type="button">
+            Share my location
+          </button>
+          <a class="btn btn-ghost" href="/locations.html">View saved pins</a>
+        </div>
+
+        <div
+          id="status"
+          class="status"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></div>
+
+        <div id="result" class="result" hidden>
+          <h2 class="result-title">Location shared</h2>
+          <dl class="result-grid">
+            <div>
+              <dt>Latitude</dt>
+              <dd id="out-lat">—</dd>
+            </div>
+            <div>
+              <dt>Longitude</dt>
+              <dd id="out-lng">—</dd>
+            </div>
+            <div>
+              <dt>Accuracy</dt>
+              <dd id="out-accuracy">—</dd>
+            </div>
+            <div>
+              <dt>Timestamp</dt>
+              <dd id="out-timestamp">—</dd>
+            </div>
+          </dl>
+          <a
+            id="map-link"
+            class="map-link"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open in OpenStreetMap
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Your coordinates are stored only after you grant permission.</p>
+    </footer>
+
+    <script src="/js/app.js" defer></script>
+  </body>
+</html>
