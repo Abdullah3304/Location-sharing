@@ -31,7 +31,7 @@ function validateLocationBody(body) {
     return "Request body must be a JSON object.";
   }
 
-  const { latitude, longitude, accuracy, timestamp } = body;
+  const { latitude, longitude, accuracy, timestamp, type, sessionId } = body;
 
   if (typeof latitude !== "number" || Number.isNaN(latitude) || latitude < -90 || latitude > 90) {
     return "latitude must be a number between -90 and 90.";
@@ -44,6 +44,12 @@ function validateLocationBody(body) {
   }
   if (typeof timestamp !== "number" || Number.isNaN(timestamp) || timestamp <= 0) {
     return "timestamp must be a positive number (ms since epoch).";
+  }
+  if (type != null && type !== "current" && type !== "live") {
+    return 'type must be "current" or "live".';
+  }
+  if (sessionId != null && (typeof sessionId !== "string" || sessionId.length > 80)) {
+    return "sessionId must be a short string.";
   }
 
   return null;
@@ -71,8 +77,9 @@ app.get("/api/locations", async (_req, res) => {
 
 /**
  * POST /api/locations — store a location after the user granted permission.
- * Expected body: { latitude, longitude, accuracy, timestamp }
- * Also writes Latitude, Longitude, Exact Location to Google Sheets when configured.
+ * Expected body: { latitude, longitude, accuracy, timestamp, type?, sessionId? }
+ * type "current" = first fix; "live" = watchPosition update.
+ * Also writes to Google Sheets when configured.
  */
 app.post("/api/locations", async (req, res) => {
   const validationError = validateLocationBody(req.body);
@@ -81,10 +88,20 @@ app.post("/api/locations", async (req, res) => {
   }
 
   try {
-    const { latitude, longitude, accuracy, timestamp } = req.body;
+    const {
+      latitude,
+      longitude,
+      accuracy,
+      timestamp,
+      type = "current",
+      sessionId = "",
+    } = req.body;
 
-    // Turn coordinates into a readable street-level address.
-    const exactLocation = await reverseGeocode(latitude, longitude);
+    // Geocode the first fix; live pings stay as coordinates to avoid rate limits.
+    const exactLocation =
+      type === "live"
+        ? `${latitude}, ${longitude}`
+        : await reverseGeocode(latitude, longitude);
 
     const saved = await saveLocation({
       latitude,
@@ -92,6 +109,8 @@ app.post("/api/locations", async (req, res) => {
       accuracy,
       timestamp,
       exactLocation,
+      type,
+      sessionId,
     });
 
     // Push the same row into Google Sheets (webhook or Sheets API).

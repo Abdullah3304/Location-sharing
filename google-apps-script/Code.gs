@@ -19,6 +19,8 @@ var HEADERS = [
   "Exact Location",
   "Device Timestamp",
   "Google Maps",
+  "Type",
+  "Session ID",
 ];
 
 /** Run this once from the Apps Script editor to verify the bound spreadsheet. */
@@ -37,6 +39,8 @@ function TEST_WRITE_NOW() {
     "TEST_WRITE_NOW — if you see this, the script is linked to THIS spreadsheet",
     new Date().toISOString(),
     "https://www.google.com/maps?q=11.11,22.22",
+    "current",
+    "test-session",
   ]);
   Logger.log("Wrote test row to: " + ss.getUrl());
 }
@@ -62,6 +66,8 @@ function doPost(e) {
       data.exactLocation || "",
       data.timestamp ? new Date(Number(data.timestamp)).toISOString() : "",
       mapsUrl,
+      data.type || "current",
+      data.sessionId || "",
     ]);
 
     return json_({
@@ -117,13 +123,20 @@ function getOrCreateSheet_(ss) {
 }
 
 function ensureHeaders_(sheet) {
-  var firstRow = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+  var width = HEADERS.length;
+  var firstRow = sheet.getRange(1, 1, 1, width).getValues()[0];
   var empty = firstRow.every(function (cell) {
     return cell === "" || cell === null;
   });
   if (empty) {
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    sheet.getRange(1, 1, 1, width).setValues([HEADERS]);
     sheet.setFrozenRows(1);
+    return;
+  }
+
+  // Upgrade older sheets that only have the original 7 columns.
+  if (String(firstRow[7] || "") !== "Type") {
+    sheet.getRange(1, 8, 1, 2).setValues([["Type", "Session ID"]]);
   }
 }
 
