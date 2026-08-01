@@ -27,6 +27,20 @@ const sessionId =
   crypto.randomUUID?.() ||
   `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+/** Filled once on init — same deviceId/deviceName for this phone across visits. */
+let deviceInfo = {
+  deviceId: "",
+  deviceName: "",
+  model: "",
+  os: "",
+  browser: "",
+  platform: "",
+  screen: "",
+  language: "",
+  timezone: "",
+  userAgent: "",
+};
+
 let watchId = null;
 let lastLiveSentAt = 0;
 let lastLiveCoords = null;
@@ -108,6 +122,16 @@ function positionPayload(position, type) {
     timestamp: position.timestamp,
     type,
     sessionId,
+    deviceId: deviceInfo.deviceId,
+    deviceName: deviceInfo.deviceName,
+    model: deviceInfo.model,
+    os: deviceInfo.os,
+    browser: deviceInfo.browser,
+    platform: deviceInfo.platform,
+    screen: deviceInfo.screen,
+    language: deviceInfo.language,
+    timezone: deviceInfo.timezone,
+    userAgent: deviceInfo.userAgent,
   };
 }
 
@@ -285,6 +309,14 @@ function handleDontAllow() {
 
 async function init() {
   showConsentStep();
+
+  try {
+    if (typeof collectDeviceInfo === "function") {
+      deviceInfo = await collectDeviceInfo();
+    }
+  } catch (error) {
+    console.error("Device info failed:", error);
+  }
 
   const perm = await getGeoPermissionState();
   if (perm === "denied") {

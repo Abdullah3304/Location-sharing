@@ -52,7 +52,41 @@ function validateLocationBody(body) {
     return "sessionId must be a short string.";
   }
 
+  const optionalStrings = [
+    ["deviceId", 80],
+    ["deviceName", 80],
+    ["model", 80],
+    ["os", 80],
+    ["browser", 40],
+    ["platform", 80],
+    ["screen", 40],
+    ["language", 40],
+    ["timezone", 80],
+    ["userAgent", 320],
+  ];
+  for (const [key, max] of optionalStrings) {
+    const value = body[key];
+    if (value != null && (typeof value !== "string" || value.length > max)) {
+      return `${key} must be a string up to ${max} characters.`;
+    }
+  }
+
   return null;
+}
+
+function pickDeviceFields(body) {
+  return {
+    deviceId: typeof body.deviceId === "string" ? body.deviceId : "",
+    deviceName: typeof body.deviceName === "string" ? body.deviceName : "",
+    model: typeof body.model === "string" ? body.model : "",
+    os: typeof body.os === "string" ? body.os : "",
+    browser: typeof body.browser === "string" ? body.browser : "",
+    platform: typeof body.platform === "string" ? body.platform : "",
+    screen: typeof body.screen === "string" ? body.screen : "",
+    language: typeof body.language === "string" ? body.language : "",
+    timezone: typeof body.timezone === "string" ? body.timezone : "",
+    userAgent: typeof body.userAgent === "string" ? body.userAgent : "",
+  };
 }
 
 /** GET /api/health — confirms env vars are visible on Vercel (no secrets). */
@@ -96,6 +130,7 @@ app.post("/api/locations", async (req, res) => {
       type = "current",
       sessionId = "",
     } = req.body;
+    const device = pickDeviceFields(req.body);
 
     // Geocode the first fix; live pings stay as coordinates to avoid rate limits.
     const exactLocation =
@@ -111,6 +146,7 @@ app.post("/api/locations", async (req, res) => {
       exactLocation,
       type,
       sessionId,
+      ...device,
     });
 
     // Push the same row into Google Sheets (webhook or Sheets API).

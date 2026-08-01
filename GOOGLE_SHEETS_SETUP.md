@@ -1,13 +1,13 @@
 # Connect PinTrail to Google Sheets
 
-Each time someone allows location access, rows are added with:
+Each time someone allows location access, rows are added with location + phone details:
 
-| Received At | Latitude | Longitude | Accuracy (m) | Exact Location | Device Timestamp | Google Maps | Type | Session ID |
-|---|---|---|---|---|---|---|---|---|
+| … | Type | Session ID | Device ID | Device Name | Model | OS | Browser | Screen | Language | Timezone | User Agent |
+|---|---|---|---|---|---|---|---|---|---|---|---|
 
-- **Type** `current` = first fix; `live` = ongoing updates while the page tab stays open.
-- **Session ID** groups one visitor’s current + live rows.
-- **Exact Location** is reverse-geocoded for `current` only (live rows store coordinates).
+- **Device ID / Device Name** — stable per phone (saved in browser). Filter by these to group one device.
+- **Session ID** — one browser visit (current + live rows share it).
+- **Type** `current` / `live`. Exact Location is reverse-geocoded for `current` only.
 
 ---
 

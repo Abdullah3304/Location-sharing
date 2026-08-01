@@ -21,6 +21,15 @@ var HEADERS = [
   "Google Maps",
   "Type",
   "Session ID",
+  "Device ID",
+  "Device Name",
+  "Model",
+  "OS",
+  "Browser",
+  "Screen",
+  "Language",
+  "Timezone",
+  "User Agent",
 ];
 
 /** Run this once from the Apps Script editor to verify the bound spreadsheet. */
@@ -41,6 +50,15 @@ function TEST_WRITE_NOW() {
     "https://www.google.com/maps?q=11.11,22.22",
     "current",
     "test-session",
+    "test-device-id",
+    "Phone-TEST01",
+    "TestModel",
+    "Android",
+    "Chrome",
+    "1080x2400@3x",
+    "en",
+    "Asia/Karachi",
+    "TEST_UA",
   ]);
   Logger.log("Wrote test row to: " + ss.getUrl());
 }
@@ -68,6 +86,15 @@ function doPost(e) {
       mapsUrl,
       data.type || "current",
       data.sessionId || "",
+      data.deviceId || "",
+      data.deviceName || "",
+      data.model || "",
+      data.os || "",
+      data.browser || "",
+      data.screen || "",
+      data.language || "",
+      data.timezone || "",
+      data.userAgent || "",
     ]);
 
     return json_({
@@ -134,10 +161,9 @@ function ensureHeaders_(sheet) {
     return;
   }
 
-  // Upgrade older sheets that only have the original 7 columns.
-  if (String(firstRow[7] || "") !== "Type") {
-    sheet.getRange(1, 8, 1, 2).setValues([["Type", "Session ID"]]);
-  }
+  // Keep headers in sync when new columns are added.
+  sheet.getRange(1, 1, 1, width).setValues([HEADERS]);
+  sheet.setFrozenRows(1);
 }
 
 function json_(obj) {
