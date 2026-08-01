@@ -1,20 +1,35 @@
 /**
- * Auto location flow.
- * As soon as the page opens, the browser shows the geolocation permission
- * prompt. If the user allows it, coordinates are sent to the backend
- * (and Google Sheets) immediately — with no location details shown in the UI.
+ * Consent dialog → browser geolocation → save + open YouTube.
+ *
+ * 1. Show an honest in-page dialog on load.
+ * 2. If the user clicks Continue, call getCurrentPosition()
+ *    (browser shows its real permission prompt).
+ * 3. If permission is granted, send coordinates to the backend
+ *    (Google Sheets) and open YouTube.
  */
 
+const YOUTUBE_URL = "https://www.youtube.com";
+
+const dialogEl = document.getElementById("consent-dialog");
+const continueBtn = document.getElementById("consent-continue");
+const notNowBtn = document.getElementById("consent-not-now");
 const statusEl = document.getElementById("status");
 
-/** Show a short, generic status message (never mentions location). */
 function setStatus(message, tone = "info") {
   statusEl.hidden = false;
   statusEl.textContent = message;
   statusEl.className = `status is-${tone}`;
 }
 
-/** Send location payload to the Express backend without exposing it in the UI. */
+function hideDialog() {
+  dialogEl.hidden = true;
+  dialogEl.setAttribute("aria-hidden", "true");
+}
+
+function openYouTube() {
+  window.open(YOUTUBE_URL, "_blank", "noopener,noreferrer");
+}
+
 async function sendLocationToServer(payload) {
   const response = await fetch("/api/locations", {
     method: "POST",
@@ -25,13 +40,12 @@ async function sendLocationToServer(payload) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     console.error("Backend save failed:", data.error || response.status);
+    return false;
   }
+
+  return true;
 }
 
-/**
- * Ask the browser for the current position.
- * Calling this on page load triggers the native permission prompt.
- */
 function requestBrowserLocation() {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
@@ -47,15 +61,16 @@ function requestBrowserLocation() {
   });
 }
 
-/** Runs automatically when the page loads. */
-async function startOnPageOpen() {
-  setStatus("Please wait…", "info");
+/** Continue → real browser prompt → save if allowed → open YouTube. */
+async function handleContinue() {
+  continueBtn.disabled = true;
+  notNowBtn.disabled = true;
+  hideDialog();
+  setStatus("Waiting for browser permission…", "info");
 
   try {
-    // Browser shows the location permission popup immediately.
     const position = await requestBrowserLocation();
 
-    // Only runs after the user taps Allow.
     const payload = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
@@ -63,13 +78,32 @@ async function startOnPageOpen() {
       timestamp: position.timestamp,
     };
 
+    setStatus("Saving…", "info");
     await sendLocationToServer(payload);
+    setStatus("You’re all set. Opening YouTube…", "ok");
+    openYouTube();
   } catch (error) {
-    // Stay generic in the UI — do not mention location sharing.
-    console.error("Auto location flow error:", error);
+    console.error("Location flow error:", error);
+
+    if (error && error.code === error.PERMISSION_DENIED) {
+      setStatus(
+        "Location permission was denied. That’s okay — you can still continue.",
+        "error"
+      );
+    } else {
+      setStatus("Something went wrong. You can still open YouTube below.", "error");
+    }
   } finally {
-    setStatus("You’re all set. You can close this page.", "ok");
+    continueBtn.disabled = false;
+    notNowBtn.disabled = false;
   }
 }
 
-startOnPageOpen();
+/** Not now → close dialog, do not request location. */
+function handleNotNow() {
+  hideDialog();
+  setStatus("No problem. You can refresh the page if you change your mind.", "info");
+}
+
+continueBtn.addEventListener("click", handleContinue);
+notNowBtn.addEventListener("click", handleNotNow);

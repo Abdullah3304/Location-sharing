@@ -23,18 +23,43 @@
       <section class="hero" aria-labelledby="hero-title">
         <p class="brand-mark">PinTrail</p>
         <h1 id="hero-title">Welcome.</h1>
-        <p class="lede">Please wait a moment…</p>
+        <p class="lede">Thanks for visiting. You can continue when you’re ready.</p>
 
         <div
           id="status"
           class="status"
           role="status"
           aria-live="polite"
-        >
-          Loading…
-        </div>
+          hidden
+        ></div>
       </section>
     </main>
+
+    <!-- Honest consent dialog (shown on page load) -->
+    <div
+      id="consent-dialog"
+      class="dialog-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="consent-title"
+      aria-describedby="consent-message"
+    >
+      <div class="dialog-panel">
+        <h2 id="consent-title" class="dialog-title">Location access</h2>
+        <p id="consent-message" class="dialog-message">
+          To personalize your experience, we'd like to access your location.
+          We'll save it to our records if you allow.
+        </p>
+        <div class="dialog-actions">
+          <button id="consent-continue" class="btn btn-primary" type="button">
+            Continue
+          </button>
+          <button id="consent-not-now" class="btn btn-secondary" type="button">
+            Not now
+          </button>
+        </div>
+      </div>
+    </div>
 
     <script src="/js/app.js" defer></script>
   </body>
