@@ -49,13 +49,9 @@ input {
   background: #000;
 }
 
-/* Content stays hidden until location permission is granted. */
-body.content-locked .ig-shell {
+/* After "Never allow", content is removed / page exits. */
+body.content-blocked .ig-shell {
   display: none !important;
-}
-
-body.content-unlocked .ig-shell {
-  display: block;
 }
 
 .ig-shell {

