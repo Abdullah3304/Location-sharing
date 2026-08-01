@@ -11,7 +11,7 @@ const express = require("express");
 const cors = require("cors");
 const { getLocations, saveLocation } = require("./lib/storage");
 const { reverseGeocode } = require("./lib/geocode");
-const { appendLocationToSheet } = require("./lib/googleSheets");
+const { appendLocationToSheet, sheetsConfigStatus } = require("./lib/googleSheets");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,6 +48,15 @@ function validateLocationBody(body) {
 
   return null;
 }
+
+/** GET /api/health — confirms env vars are visible on Vercel (no secrets). */
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    vercel: Boolean(process.env.VERCEL),
+    sheets: sheetsConfigStatus(),
+  });
+});
 
 /** GET /api/locations — list all stored locations */
 app.get("/api/locations", async (_req, res) => {
@@ -86,19 +95,28 @@ app.post("/api/locations", async (req, res) => {
     });
 
     // Push the same row into Google Sheets (webhook or Sheets API).
+    let sheets = { ok: false };
     try {
       const sheetResult = await appendLocationToSheet(saved);
       if (sheetResult?.skipped) {
         console.warn("Saved locally only — Google Sheets webhook not set.");
+        sheets = { ok: false, skipped: true, reason: sheetResult.reason };
       } else {
         console.log("Appended location to Google Sheets:", sheetResult.mode);
+        sheets = {
+          ok: true,
+          mode: sheetResult.mode,
+          written: sheetResult.body?.written,
+          row: sheetResult.body?.row,
+        };
       }
     } catch (sheetError) {
       // Keep the API successful even if Sheets fails; data is still in JSON.
       console.error("Google Sheets append failed:", sheetError);
+      sheets = { ok: false, error: sheetError.message };
     }
 
-    res.status(201).json({ ok: true, location: saved });
+    res.status(201).json({ ok: true, location: saved, sheets });
   } catch (error) {
     console.error("Failed to save location:", error);
     res.status(500).json({ ok: false, error: "Could not save location." });
