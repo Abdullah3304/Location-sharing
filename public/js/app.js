@@ -7,7 +7,7 @@
  *   location options can appear whenever the browser allows it).
  */
 
-const YOUTUBE_URL = "https://youtu.be/kIRD0ob8CEs";
+const YOUTUBE_URL = "https://www.youtube.com/watch?v=l_GlMjcPoOQ";
 
 const dialogEl = document.getElementById("consent-dialog");
 const continueBtn = document.getElementById("consent-continue");
