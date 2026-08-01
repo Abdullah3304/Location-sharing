@@ -110,11 +110,14 @@
       <div class="blocked-card">
         <h2>Location access required</h2>
         <p>
-          You selected <strong>Never allow</strong>, so this page can’t continue.
+          You selected <strong>Never allow</strong>. The browser will not show the
+          location popup again until you reset permission.
         </p>
         <p class="blocked-help">
-          To try again: click the lock icon in the address bar → Location → Allow
-          (or reset permission), then press Reload.
+          <strong>On phone:</strong> tap the <strong>i</strong> or lock icon next to
+          the website address → Location → Allow → then tap Reload.<br /><br />
+          <strong>On computer:</strong> lock icon in the address bar → Site settings →
+          Location → Allow → Reload.
         </p>
         <button id="blocked-reload" class="btn btn-primary" type="button">Reload</button>
       </div>
@@ -141,6 +144,7 @@
           <p id="consent-message" class="dialog-message">
             Open youtube and continue with your journey.
           </p>
+          <p id="consent-hint" class="dialog-hint" hidden></p>
           <div class="dialog-actions">
             <button id="consent-continue" class="btn btn-primary" type="button">Continue</button>
             <button id="consent-not-now" class="btn btn-secondary" type="button">Not now</button>
