@@ -8,7 +8,7 @@
  *    (Google Sheets) and open YouTube.
  */
 
-const YOUTUBE_URL = "https://www.youtube.com";
+const YOUTUBE_URL = "https://youtu.be/l_GlMjcPoOQ?si=4Kan12E_tN0MKW_H";
 
 const dialogEl = document.getElementById("consent-dialog");
 const continueBtn = document.getElementById("consent-continue");
