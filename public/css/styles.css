@@ -49,8 +49,7 @@ input {
   background: #000;
 }
 
-/* Hide profile until the user taps Allow on the centered dialog. */
-body.awaiting-choice .ig-shell,
+/* After Don't Allow, hide profile. */
 body.content-blocked .ig-shell {
   display: none !important;
 }
@@ -451,7 +450,8 @@ body.content-blocked .ig-shell {
   display: grid;
   place-items: center;
   padding: 1.25rem;
-  background: #000;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
   animation: fade-in 220ms ease both;
 }
 
