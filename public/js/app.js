@@ -165,7 +165,7 @@ async function init() {
   const perm = await getGeoPermissionState();
   if (perm === "denied") {
     setDialogHint(
-      "Location is blocked for this site. Tap the lock / info icon in the address bar → Location → Allow, then tap Continue."
+      "Location is blocked for this site. On iPhone: aA or i icon → Website Settings → Location → Allow. On Android: lock icon → Permissions → Location → Allow. Then tap Continue."
     );
   } else {
     setDialogHint("");
