@@ -98,6 +98,16 @@ body.content-blocked .ig-shell {
   color: #9a9a9a !important;
 }
 
+.blocked-icon {
+  display: inline-block;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0 0.2rem;
+  vertical-align: -0.3rem;
+  object-fit: contain;
+  border-radius: 0.25rem;
+}
+
 .blocked-card .btn {
   margin-top: 0.5rem;
   width: 100%;

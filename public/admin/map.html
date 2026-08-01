@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live map · Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="/admin/map.css" />
+  </head>
+  <body>
+    <header class="admin-bar">
+      <div>
+        <h1>Live map</h1>
+        <p id="status-line" class="status-line">Enter admin key to load devices.</p>
+      </div>
+      <div class="admin-controls">
+        <label class="key-field">
+          <span>Admin key</span>
+          <input id="admin-key" type="password" autocomplete="current-password" placeholder="ADMIN_MAP_KEY" />
+        </label>
+        <button id="refresh-btn" class="btn" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <main class="admin-layout">
+      <aside class="device-panel">
+        <h2>Devices</h2>
+        <ul id="device-list" class="device-list"></ul>
+      </aside>
+      <section class="map-wrap">
+        <div id="map" aria-label="Live location map"></div>
+      </section>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/admin/map.js"></script>
+  </body>
+</html>

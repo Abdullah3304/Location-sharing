@@ -19,18 +19,20 @@ Each time someone allows location access, rows are added with location + phone d
 2. Rename it to **Location Sharing**
 3. Keep the default first tab (the script will create a **Locations** tab)
 
-### 2. Install the Apps Script
+### 2. Install / upgrade the Apps Script
 
 1. In the spreadsheet menu: **Extensions → Apps Script**
 2. Delete any code in `Code.gs`
 3. Copy everything from this repo file: `google-apps-script/Code.gs`
 4. Paste it into the Apps Script editor
 5. Click **Save** (disk icon)
+6. Select function **UPGRADE_HEADERS_NOW** → **Run** → Allow permissions  
+   (this expands the header row to Type / Session / Device columns)
 
-### 3. Deploy the webhook
+### 3. Deploy the webhook (or New version if upgrading)
 
-1. Click **Deploy → New deployment**
-2. Click the gear icon → choose **Web app**
+1. Click **Deploy → New deployment** (first time) or **Manage deployments → Edit → New version**
+2. Type: **Web app**
 3. Settings:
    - **Description:** PinTrail locations
    - **Execute as:** Me
@@ -38,6 +40,14 @@ Each time someone allows location access, rows are added with location + phone d
 4. Click **Deploy**
 5. Authorize with your Google account (Advanced → Go to… → Allow)
 6. **Copy the Web app URL** (ends with `/exec`)
+
+### Admin live map
+
+After the server has `ADMIN_MAP_KEY` in `.env`, open:
+
+`http://localhost:3000/admin/map.html?key=YOUR_ADMIN_MAP_KEY`
+
+It shows the latest pin per device and refreshes automatically.
 
 ### 4. Connect the Node server
 

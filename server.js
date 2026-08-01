@@ -11,7 +11,12 @@ const express = require("express");
 const cors = require("cors");
 const { getLocations, saveLocation } = require("./lib/storage");
 const { reverseGeocode } = require("./lib/geocode");
-const { appendLocationToSheet, sheetsConfigStatus } = require("./lib/googleSheets");
+const {
+  appendLocationToSheet,
+  sheetsConfigStatus,
+  fetchLatestDevicesFromSheet,
+  upgradeSheetHeaders,
+} = require("./lib/googleSheets");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,7 +24,13 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: "32kb" }));
 
+function getAdminKey() {
+  const value = process.env.ADMIN_MAP_KEY;
+  return typeof value === "string" ? value.trim() : "";
+}
+
 // Static frontend (HTML, CSS, JS)
+// Admin map UI is at /admin/map.html — data is gated by ADMIN_MAP_KEY on the API.
 app.use(express.static(path.join(__dirname, "public")));
 
 /**
@@ -106,6 +117,104 @@ app.get("/api/locations", async (_req, res) => {
   } catch (error) {
     console.error("Failed to read locations:", error);
     res.status(500).json({ ok: false, error: "Could not read stored locations." });
+  }
+});
+
+function latestDevicesFromLocal(locations) {
+  const byDevice = new Map();
+  for (const entry of locations) {
+    const key = entry.deviceId || entry.deviceName || entry.id;
+    if (!key) continue;
+    const prev = byDevice.get(key);
+    if (!prev || String(entry.receivedAt) >= String(prev.receivedAt)) {
+      byDevice.set(key, {
+        receivedAt: entry.receivedAt,
+        latitude: entry.latitude,
+        longitude: entry.longitude,
+        accuracy: entry.accuracy,
+        exactLocation: entry.exactLocation || "",
+        mapsUrl: `https://www.google.com/maps?q=${entry.latitude},${entry.longitude}`,
+        type: entry.type || "current",
+        sessionId: entry.sessionId || "",
+        deviceId: entry.deviceId || "",
+        deviceName: entry.deviceName || key,
+        model: entry.model || "",
+        os: entry.os || "",
+        browser: entry.browser || "",
+        screen: entry.screen || "",
+        language: entry.language || "",
+        timezone: entry.timezone || "",
+      });
+    }
+  }
+  return [...byDevice.values()];
+}
+
+/**
+ * GET /api/admin/live?key=...
+ * Latest pin per device (Sheets when available, else local JSON).
+ */
+app.get("/api/admin/live", async (req, res) => {
+  const expected = getAdminKey();
+  if (!expected) {
+    return res.status(503).json({ ok: false, error: "ADMIN_MAP_KEY is not set." });
+  }
+  const provided = String(req.query.key || req.get("x-admin-key") || "").trim();
+  if (provided !== expected) {
+    return res.status(401).json({ ok: false, error: "Invalid admin key." });
+  }
+
+  try {
+    let devices = [];
+    let source = "local";
+
+    try {
+      const sheetLatest = await fetchLatestDevicesFromSheet();
+      if (sheetLatest.ok && Array.isArray(sheetLatest.devices) && sheetLatest.devices.length) {
+        devices = sheetLatest.devices;
+        source = "sheets";
+      }
+    } catch (sheetError) {
+      console.warn("Sheets latest unavailable, using local store:", sheetError.message);
+    }
+
+    if (!devices.length) {
+      const locations = await getLocations();
+      devices = latestDevicesFromLocal(locations);
+      source = "local";
+    }
+
+    res.json({ ok: true, count: devices.length, source, devices });
+  } catch (error) {
+    console.error("Admin live map failed:", error);
+    res.status(500).json({ ok: false, error: "Could not load live devices." });
+  }
+});
+
+/**
+ * POST /api/admin/upgrade-sheet?key=...
+ * Asks Apps Script to rewrite the full header row (needs new Code.gs deployed).
+ */
+app.post("/api/admin/upgrade-sheet", async (req, res) => {
+  const expected = getAdminKey();
+  if (!expected) {
+    return res.status(503).json({ ok: false, error: "ADMIN_MAP_KEY is not set." });
+  }
+  const provided = String(req.query.key || req.get("x-admin-key") || "").trim();
+  if (provided !== expected) {
+    return res.status(401).json({ ok: false, error: "Invalid admin key." });
+  }
+
+  try {
+    const result = await upgradeSheetHeaders();
+    res.json(result);
+  } catch (error) {
+    console.error("Sheet header upgrade failed:", error);
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+      hint: "Paste the new google-apps-script/Code.gs and Deploy → New version first.",
+    });
   }
 });
 

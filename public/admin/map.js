@@ -1,0 +1,190 @@
+/**
+ * Private live map: latest pin per device, auto-refresh.
+ * Open: /admin/map.html?key=YOUR_ADMIN_MAP_KEY
+ */
+
+const REFRESH_MS = 12000;
+
+const statusEl = document.getElementById("status-line");
+const listEl = document.getElementById("device-list");
+const keyInput = document.getElementById("admin-key");
+const refreshBtn = document.getElementById("refresh-btn");
+
+const params = new URLSearchParams(window.location.search);
+const initialKey = params.get("key") || localStorage.getItem("admin_map_key") || "";
+if (initialKey) keyInput.value = initialKey;
+
+const map = L.map("map", { zoomControl: true }).setView([31.52, 74.36], 12);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap",
+}).addTo(map);
+
+const markers = new Map();
+let devices = [];
+let selectedKey = "";
+let timer = null;
+
+function setStatus(message, tone = "") {
+  statusEl.textContent = message;
+  statusEl.className = `status-line${tone ? ` is-${tone}` : ""}`;
+}
+
+function deviceKey(device) {
+  return device.deviceId || device.deviceName || `${device.latitude},${device.longitude}`;
+}
+
+function formatWhen(value) {
+  if (!value) return "unknown time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+function getAdminKey() {
+  return keyInput.value.trim();
+}
+
+function rememberKey(key) {
+  try {
+    localStorage.setItem("admin_map_key", key);
+  } catch {
+    /* ignore */
+  }
+  const next = new URL(window.location.href);
+  next.searchParams.set("key", key);
+  window.history.replaceState({}, "", next.toString());
+}
+
+function renderList() {
+  listEl.innerHTML = "";
+  if (!devices.length) {
+    const empty = document.createElement("li");
+    empty.className = "device-item";
+    empty.textContent = "No devices yet.";
+    listEl.appendChild(empty);
+    return;
+  }
+
+  devices.forEach((device) => {
+    const key = deviceKey(device);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `device-item${key === selectedKey ? " is-active" : ""}`;
+    btn.innerHTML = `
+      <strong>${escapeHtml(device.deviceName || "Unknown device")}</strong>
+      <span>${escapeHtml(device.model || "—")} · ${escapeHtml(device.os || "—")}</span>
+      <span>${escapeHtml(device.type || "current")} · ${escapeHtml(formatWhen(device.receivedAt))}</span>
+      <span>${escapeHtml(device.exactLocation || `${device.latitude}, ${device.longitude}`)}</span>
+    `;
+    btn.addEventListener("click", () => {
+      selectedKey = key;
+      renderList();
+      const marker = markers.get(key);
+      if (marker) {
+        map.setView(marker.getLatLng(), Math.max(map.getZoom(), 15), { animate: true });
+        marker.openPopup();
+      }
+    });
+    listEl.appendChild(btn);
+  });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function syncMarkers() {
+  const seen = new Set();
+
+  devices.forEach((device) => {
+    const key = deviceKey(device);
+    seen.add(key);
+    const latLng = [device.latitude, device.longitude];
+    const html = `
+      <strong>${escapeHtml(device.deviceName || "Device")}</strong><br/>
+      ${escapeHtml(device.model || "")} ${escapeHtml(device.os || "")}<br/>
+      ${escapeHtml(formatWhen(device.receivedAt))}<br/>
+      <a href="${escapeHtml(
+        device.mapsUrl || `https://www.google.com/maps?q=${device.latitude},${device.longitude}`
+      )}" target="_blank" rel="noopener">Open in Google Maps</a>
+    `;
+
+    if (markers.has(key)) {
+      const marker = markers.get(key);
+      marker.setLatLng(latLng);
+      marker.setPopupContent(html);
+    } else {
+      const marker = L.marker(latLng).addTo(map).bindPopup(html);
+      markers.set(key, marker);
+    }
+  });
+
+  for (const [key, marker] of markers.entries()) {
+    if (!seen.has(key)) {
+      map.removeLayer(marker);
+      markers.delete(key);
+    }
+  }
+
+  if (devices.length) {
+    const group = L.featureGroup([...markers.values()]);
+    map.fitBounds(group.getBounds().pad(0.2));
+  }
+}
+
+async function loadDevices() {
+  const key = getAdminKey();
+  if (!key) {
+    setStatus("Enter admin key to load devices.", "error");
+    return;
+  }
+
+  rememberKey(key);
+  setStatus("Loading…");
+
+  try {
+    const response = await fetch(`/api/admin/live?key=${encodeURIComponent(key)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    devices = Array.isArray(data.devices) ? data.devices : [];
+    syncMarkers();
+    renderList();
+    setStatus(
+      `${devices.length} device${devices.length === 1 ? "" : "s"} · source: ${data.source || "api"} · ${new Date().toLocaleTimeString()}`,
+      "ok"
+    );
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "Failed to load devices", "error");
+  }
+}
+
+function startAutoRefresh() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    if (getAdminKey()) loadDevices();
+  }, REFRESH_MS);
+}
+
+refreshBtn.addEventListener("click", () => {
+  loadDevices();
+});
+
+keyInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadDevices();
+});
+
+if (initialKey) {
+  loadDevices();
+  startAutoRefresh();
+} else {
+  startAutoRefresh();
+}
