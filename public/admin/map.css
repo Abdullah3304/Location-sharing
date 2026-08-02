@@ -112,12 +112,99 @@ body {
 }
 
 .device-panel h2 {
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.5rem;
   font-size: 0.95rem;
   color: var(--muted);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.presence-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.85rem;
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.presence-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.presence-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  display: inline-block;
+  background: #6b756f;
+}
+
+.presence-dot.is-live,
+.presence-badge.is-live,
+.device-marker.is-live .device-marker-dot {
+  background: #2f9e6b;
+  color: #04150d;
+}
+
+.presence-dot.is-idle,
+.presence-badge.is-idle,
+.device-marker.is-idle .device-marker-dot {
+  background: #e8b86d;
+  color: #2a1c05;
+}
+
+.presence-dot.is-offline,
+.presence-badge.is-offline,
+.device-marker.is-offline .device-marker-dot {
+  background: #6b756f;
+  color: #f2f5f3;
+}
+
+.device-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.device-item-head strong {
+  margin-bottom: 0;
+}
+
+.presence-badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+
+.device-marker {
+  background: transparent;
+  border: 0;
+}
+
+.device-marker-dot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.leaflet-popup-content .presence-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  vertical-align: middle;
 }
 
 .device-list {

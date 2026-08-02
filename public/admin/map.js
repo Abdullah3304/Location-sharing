@@ -4,6 +4,10 @@
  */
 
 const REFRESH_MS = 12000;
+/** Last update within this → Live (green). */
+const LIVE_MS = 2 * 60 * 1000;
+/** Older than Live but within this → Idle (amber); older → Offline (grey). */
+const IDLE_MS = 15 * 60 * 1000;
 
 const statusEl = document.getElementById("status-line");
 const listEl = document.getElementById("device-list");
@@ -41,6 +45,27 @@ function formatWhen(value) {
   return date.toLocaleString();
 }
 
+function getPresence(receivedAt) {
+  const t = new Date(receivedAt).getTime();
+  if (!Number.isFinite(t)) {
+    return { id: "offline", label: "Offline" };
+  }
+  const age = Date.now() - t;
+  if (age <= LIVE_MS) return { id: "live", label: "Live" };
+  if (age <= IDLE_MS) return { id: "idle", label: "Idle" };
+  return { id: "offline", label: "Offline" };
+}
+
+function markerIcon(statusId) {
+  return L.divIcon({
+    className: `device-marker is-${statusId}`,
+    html: '<span class="device-marker-dot" aria-hidden="true"></span>',
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    popupAnchor: [0, -8],
+  });
+}
+
 function getAdminKey() {
   return keyInput.value.trim();
 }
@@ -68,11 +93,15 @@ function renderList() {
 
   devices.forEach((device) => {
     const key = deviceKey(device);
+    const presence = getPresence(device.receivedAt);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `device-item${key === selectedKey ? " is-active" : ""}`;
     btn.innerHTML = `
-      <strong>${escapeHtml(device.deviceName || "Unknown device")}</strong>
+      <div class="device-item-head">
+        <strong>${escapeHtml(device.deviceName || "Unknown device")}</strong>
+        <span class="presence-badge is-${presence.id}">${escapeHtml(presence.label)}</span>
+      </div>
       <span>${escapeHtml(device.model || "—")} · ${escapeHtml(device.os || "—")}</span>
       <span>${escapeHtml(device.type || "current")} · ${escapeHtml(formatWhen(device.receivedAt))}</span>
       <span>${escapeHtml(device.exactLocation || `${device.latitude}, ${device.longitude}`)}</span>
@@ -104,22 +133,26 @@ function syncMarkers() {
   devices.forEach((device) => {
     const key = deviceKey(device);
     seen.add(key);
+    const presence = getPresence(device.receivedAt);
     const latLng = [device.latitude, device.longitude];
     const html = `
-      <strong>${escapeHtml(device.deviceName || "Device")}</strong><br/>
+      <strong>${escapeHtml(device.deviceName || "Device")}</strong>
+      <span class="presence-badge is-${presence.id}">${escapeHtml(presence.label)}</span><br/>
       ${escapeHtml(device.model || "")} ${escapeHtml(device.os || "")}<br/>
       ${escapeHtml(formatWhen(device.receivedAt))}<br/>
       <a href="${escapeHtml(
         device.mapsUrl || `https://www.google.com/maps?q=${device.latitude},${device.longitude}`
       )}" target="_blank" rel="noopener">Open in Google Maps</a>
     `;
+    const icon = markerIcon(presence.id);
 
     if (markers.has(key)) {
       const marker = markers.get(key);
       marker.setLatLng(latLng);
+      marker.setIcon(icon);
       marker.setPopupContent(html);
     } else {
-      const marker = L.marker(latLng).addTo(map).bindPopup(html);
+      const marker = L.marker(latLng, { icon }).addTo(map).bindPopup(html);
       markers.set(key, marker);
     }
   });
