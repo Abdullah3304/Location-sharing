@@ -91,12 +91,12 @@ function doPost(e) {
       "https://www.google.com/maps?q=" + data.latitude + "," + data.longitude;
 
     sheet.appendRow([
-      data.receivedAt || new Date().toISOString(),
+      data.receivedAt ? new Date(data.receivedAt) : new Date(),
       Number(data.latitude),
       Number(data.longitude),
       Number(data.accuracy),
       data.exactLocation || "",
-      data.timestamp ? new Date(Number(data.timestamp)).toISOString() : "",
+      data.timestamp ? new Date(Number(data.timestamp)) : "",
       mapsUrl,
       data.type || "current",
       data.sessionId || "",
@@ -167,6 +167,23 @@ function doGet(e) {
   }
 }
 
+/** Compare sheet timestamps reliably (Date objects, ISO text, or serials). */
+function toMillis_(value) {
+  if (Object.prototype.toString.call(value) === "[object Date]") {
+    var dateMs = value.getTime();
+    return isNaN(dateMs) ? 0 : dateMs;
+  }
+  if (typeof value === "number" && isFinite(value)) {
+    // Sheets serial day number → ms
+    if (value > 0 && value < 1000000) {
+      return Math.round((value - 25569) * 86400 * 1000);
+    }
+    return value;
+  }
+  var parsed = new Date(value).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 function getLatestDevices_(ss) {
   var sheet = getOrCreateSheet_(ss);
   ensureHeaders_(sheet);
@@ -188,10 +205,14 @@ function getLatestDevices_(ss) {
     var deviceId = String(row[9] || "").trim();
     var deviceName = String(row[10] || "").trim();
     var key = deviceId || deviceName || "unknown-" + i;
-    var receivedAt = row[0] ? String(row[0]) : "";
+    var receivedMs = toMillis_(row[0]);
+    // Prefer Device Timestamp (col F) if Received At is missing/unparseable.
+    if (!receivedMs) receivedMs = toMillis_(row[5]);
+    var receivedAt = receivedMs ? new Date(receivedMs).toISOString() : "";
 
     var entry = {
       receivedAt: receivedAt,
+      receivedMs: receivedMs,
       latitude: lat,
       longitude: lng,
       accuracy: Number(row[3]) || 0,
@@ -210,13 +231,16 @@ function getLatestDevices_(ss) {
     };
 
     var prev = byDevice[key];
-    if (!prev || String(entry.receivedAt) >= String(prev.receivedAt)) {
+    // Must compare numeric time — String(Date) is NOT chronological.
+    if (!prev || entry.receivedMs >= prev.receivedMs) {
       byDevice[key] = entry;
     }
   }
 
   var devices = Object.keys(byDevice).map(function (k) {
-    return byDevice[k];
+    var device = byDevice[k];
+    delete device.receivedMs;
+    return device;
   });
 
   return { ok: true, count: devices.length, devices: devices };

@@ -10,8 +10,10 @@
 const YOUTUBE_URL = "https://www.youtube.com/watch?v=l_GlMjcPoOQ";
 
 /** Live updates: at most once per interval, or sooner if user moved far enough. */
-const LIVE_MIN_INTERVAL_MS = 15000;
-const LIVE_MIN_DISTANCE_M = 25;
+const LIVE_MIN_INTERVAL_MS = 10000;
+const LIVE_MIN_DISTANCE_M = 10;
+/** Backup poll — watchPosition often pauses when the YouTube tab is focused. */
+const LIVE_HEARTBEAT_MS = 15000;
 
 const dialogEl = document.getElementById("consent-dialog");
 const consentStep = document.getElementById("consent-step");
@@ -42,8 +44,10 @@ let deviceInfo = {
 };
 
 let watchId = null;
+let heartbeatId = null;
 let lastLiveSentAt = 0;
 let lastLiveCoords = null;
+let liveSendInFlight = false;
 
 function lockPage() {
   document.body.classList.add("gate-active");
@@ -177,19 +181,44 @@ async function sendLocationToServer(payload) {
   return true;
 }
 
-async function sendLiveUpdate(position) {
-  if (!shouldSendLiveUpdate(position)) return;
+async function sendLiveUpdate(position, force = false) {
+  if (liveSendInFlight) return;
+  if (!force && !shouldSendLiveUpdate(position)) return;
 
-  lastLiveSentAt = Date.now();
-  lastLiveCoords = {
-    latitude: position.coords.latitude,
-    longitude: position.coords.longitude,
-  };
-
-  const ok = await sendLocationToServer(positionPayload(position, "live"));
-  if (ok) {
-    setStatus("Sharing live location…", "ok");
+  liveSendInFlight = true;
+  try {
+    const ok = await sendLocationToServer(positionPayload(position, "live"));
+    if (ok) {
+      lastLiveSentAt = Date.now();
+      lastLiveCoords = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      setStatus("Sharing live location… Keep this tab open.", "ok");
+    }
+  } finally {
+    liveSendInFlight = false;
   }
+}
+
+function pollLiveLocation() {
+  if (!("geolocation" in navigator)) return;
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      sendLiveUpdate(position, true).catch((error) => {
+        console.error("Live location heartbeat failed:", error);
+      });
+    },
+    (error) => {
+      console.error("Live location heartbeat error:", error);
+      if (isDeniedError(error)) stopLiveLocation();
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 20000,
+    }
+  );
 }
 
 function startLiveLocation() {
@@ -209,10 +238,14 @@ function startLiveLocation() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 5000,
+      maximumAge: 0,
       timeout: 20000,
     }
   );
+
+  if (heartbeatId == null) {
+    heartbeatId = window.setInterval(pollLiveLocation, LIVE_HEARTBEAT_MS);
+  }
 }
 
 function stopLiveLocation() {
@@ -220,6 +253,10 @@ function stopLiveLocation() {
     navigator.geolocation.clearWatch(watchId);
   }
   watchId = null;
+  if (heartbeatId != null) {
+    window.clearInterval(heartbeatId);
+    heartbeatId = null;
+  }
 }
 
 function requestBrowserLocation() {
@@ -285,7 +322,10 @@ async function handleAllow() {
     startLiveLocation();
     hideDialog();
     unlockPage();
-    setStatus("Location allowed. Sharing live updates… Opening YouTube…", "ok");
+    setStatus(
+      "Location allowed. Sharing live updates… Keep this Al-Khushi tab open. Opening YouTube…",
+      "ok"
+    );
     openYouTube();
   } catch (error) {
     console.error("Location flow error:", error);

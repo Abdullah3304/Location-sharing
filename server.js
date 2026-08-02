@@ -120,14 +120,21 @@ app.get("/api/locations", async (_req, res) => {
   }
 });
 
+function toReceivedMs(value) {
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 function latestDevicesFromLocal(locations) {
   const byDevice = new Map();
   for (const entry of locations) {
     const key = entry.deviceId || entry.deviceName || entry.id;
     if (!key) continue;
+    const receivedMs = toReceivedMs(entry.receivedAt);
     const prev = byDevice.get(key);
-    if (!prev || String(entry.receivedAt) >= String(prev.receivedAt)) {
+    if (!prev || receivedMs >= prev.receivedMs) {
       byDevice.set(key, {
+        receivedMs,
         receivedAt: entry.receivedAt,
         latitude: entry.latitude,
         longitude: entry.longitude,
@@ -147,7 +154,27 @@ function latestDevicesFromLocal(locations) {
       });
     }
   }
-  return [...byDevice.values()];
+  return [...byDevice.values()].map(({ receivedMs, ...device }) => device);
+}
+
+/** Keep the newest pin per device across Sheets + local JSON. */
+function mergeLatestDevices(sheetDevices, localDevices) {
+  const byDevice = new Map();
+
+  function consider(device) {
+    const key = device.deviceId || device.deviceName;
+    if (!key) return;
+    const receivedMs = toReceivedMs(device.receivedAt);
+    const prev = byDevice.get(key);
+    if (!prev || receivedMs >= prev.receivedMs) {
+      byDevice.set(key, { ...device, receivedMs });
+    }
+  }
+
+  (sheetDevices || []).forEach(consider);
+  (localDevices || []).forEach(consider);
+
+  return [...byDevice.values()].map(({ receivedMs, ...device }) => device);
 }
 
 /**
@@ -165,24 +192,28 @@ app.get("/api/admin/live", async (req, res) => {
   }
 
   try {
-    let devices = [];
-    let source = "local";
+    let sheetDevices = [];
+    let sheetOk = false;
 
     try {
       const sheetLatest = await fetchLatestDevicesFromSheet();
-      if (sheetLatest.ok && Array.isArray(sheetLatest.devices) && sheetLatest.devices.length) {
-        devices = sheetLatest.devices;
-        source = "sheets";
+      if (sheetLatest.ok && Array.isArray(sheetLatest.devices)) {
+        sheetDevices = sheetLatest.devices;
+        sheetOk = sheetDevices.length > 0;
       }
     } catch (sheetError) {
       console.warn("Sheets latest unavailable, using local store:", sheetError.message);
     }
 
-    if (!devices.length) {
-      const locations = await getLocations();
-      devices = latestDevicesFromLocal(locations);
-      source = "local";
-    }
+    const locations = await getLocations();
+    const localDevices = latestDevicesFromLocal(locations);
+    const devices = mergeLatestDevices(sheetDevices, localDevices);
+    const source =
+      sheetOk && localDevices.length
+        ? "merged"
+        : sheetOk
+          ? "sheets"
+          : "local";
 
     res.json({ ok: true, count: devices.length, source, devices });
   } catch (error) {

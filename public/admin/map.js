@@ -28,6 +28,7 @@ const markers = new Map();
 let devices = [];
 let selectedKey = "";
 let timer = null;
+let hasFittedBounds = false;
 
 function setStatus(message, tone = "") {
   statusEl.textContent = message;
@@ -164,9 +165,11 @@ function syncMarkers() {
     }
   }
 
-  if (devices.length) {
+  // Fit once (or when jumping to a selected device) so pins can move visibly on refresh.
+  if (devices.length && !hasFittedBounds) {
     const group = L.featureGroup([...markers.values()]);
     map.fitBounds(group.getBounds().pad(0.2));
+    hasFittedBounds = true;
   }
 }
 
