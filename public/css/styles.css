@@ -49,9 +49,9 @@ input {
   background: #000;
 }
 
-/* While gated, blur page and block all clicks on the profile. */
+/* While gated, lightly blur page and block all clicks on the profile. */
 body.gate-active .ig-shell {
-  filter: blur(8px);
+  filter: blur(2px);
   pointer-events: none;
   user-select: none;
 }
@@ -466,9 +466,9 @@ body.content-blocked .ig-shell {
   display: grid;
   place-items: center;
   padding: 1.25rem;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   animation: fade-in 220ms ease both;
   touch-action: none;
 }
