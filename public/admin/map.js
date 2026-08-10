@@ -80,6 +80,16 @@ function rememberKey(key) {
   const next = new URL(window.location.href);
   next.searchParams.set("key", key);
   window.history.replaceState({}, "", next.toString());
+  const linksLink = document.getElementById("links-link");
+  if (linksLink) {
+    linksLink.href = `/admin/links.html?key=${encodeURIComponent(key)}`;
+  }
+}
+
+function personTitle(device) {
+  if (device.inviteCode) return device.inviteCode;
+  if (device.inviteLabel) return device.inviteLabel;
+  return device.deviceName || "Unknown device";
 }
 
 function renderList() {
@@ -100,10 +110,14 @@ function renderList() {
     btn.className = `device-item${key === selectedKey ? " is-active" : ""}`;
     btn.innerHTML = `
       <div class="device-item-head">
-        <strong>${escapeHtml(device.deviceName || "Unknown device")}</strong>
+        <strong>${escapeHtml(personTitle(device))}</strong>
         <span class="presence-badge is-${presence.id}">${escapeHtml(presence.label)}</span>
       </div>
-      <span>${escapeHtml(device.model || "—")} · ${escapeHtml(device.os || "—")}</span>
+      <span>${
+        device.inviteCode
+          ? `Code ${escapeHtml(device.inviteCode)} · `
+          : ""
+      }${escapeHtml(device.deviceName || "—")} · ${escapeHtml(device.model || "—")}</span>
       <span>${escapeHtml(device.type || "current")} · ${escapeHtml(formatWhen(device.receivedAt))}</span>
       <span>${escapeHtml(device.exactLocation || `${device.latitude}, ${device.longitude}`)}</span>
     `;
@@ -137,9 +151,14 @@ function syncMarkers() {
     const presence = getPresence(device.receivedAt);
     const latLng = [device.latitude, device.longitude];
     const html = `
-      <strong>${escapeHtml(device.deviceName || "Device")}</strong>
+      <strong>${escapeHtml(personTitle(device))}</strong>
       <span class="presence-badge is-${presence.id}">${escapeHtml(presence.label)}</span><br/>
-      ${escapeHtml(device.model || "")} ${escapeHtml(device.os || "")}<br/>
+      ${
+        device.inviteCode
+          ? `Code: ${escapeHtml(device.inviteCode)}<br/>`
+          : ""
+      }
+      ${escapeHtml(device.deviceName || "")} · ${escapeHtml(device.model || "")} ${escapeHtml(device.os || "")}<br/>
       ${escapeHtml(formatWhen(device.receivedAt))}<br/>
       <a href="${escapeHtml(
         device.mapsUrl || `https://www.google.com/maps?q=${device.latitude},${device.longitude}`
@@ -219,6 +238,7 @@ keyInput.addEventListener("keydown", (event) => {
 });
 
 if (initialKey) {
+  rememberKey(initialKey);
   loadDevices();
   startAutoRefresh();
 } else {

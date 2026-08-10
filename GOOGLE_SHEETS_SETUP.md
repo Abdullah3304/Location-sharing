@@ -41,13 +41,19 @@ Each time someone allows location access, rows are added with location + phone d
 5. Authorize with your Google account (Advanced → Go to… → Allow)
 6. **Copy the Web app URL** (ends with `/exec`)
 
-### Admin live map
+### Admin live map + invite links
 
 After the server has `ADMIN_MAP_KEY` in `.env`, open:
 
-`http://localhost:3000/admin/map.html?key=YOUR_ADMIN_MAP_KEY`
+- Live map: `http://localhost:3000/admin/map.html?key=YOUR_ADMIN_MAP_KEY`
+- Invite links: `http://localhost:3000/admin/links.html?key=YOUR_ADMIN_MAP_KEY`
 
-It shows the latest pin per device and refreshes automatically.
+On **Invite links**, type your own code (e.g. `ali`) → copy `yoursite.com/?c=ali` → send on WhatsApp.  
+That same code is stored with their location (and shown on the live map).
+
+After updating `Code.gs`, run **UPGRADE_HEADERS_NOW** so the **Invite Code** column and **Invites** tab exist.
+
+**Received At** / **Device Timestamp** are written in **Lahore time** (`Asia/Karachi`, e.g. `2026-08-02 05:35:01`), not UTC.
 
 ### 4. Connect the Node server
 

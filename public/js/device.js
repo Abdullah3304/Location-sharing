@@ -1,4 +1,4 @@
-/**
+  /**
  * Collect browser/device details available to a website.
  * Device ID + Device Name persist in localStorage so the same phone
  * keeps the same identity across visits (until site data is cleared).

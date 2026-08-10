@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Invite links · Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/admin/map.css" />
+    <link rel="stylesheet" href="/admin/links.css" />
+  </head>
+  <body>
+    <header class="admin-bar">
+      <div>
+        <h1>Invite links</h1>
+        <p id="status-line" class="status-line">
+          Type your own code — it becomes the end of the link (?c=…).
+        </p>
+      </div>
+      <div class="admin-controls">
+        <label class="key-field">
+          <span>Admin key</span>
+          <input
+            id="admin-key"
+            type="password"
+            autocomplete="current-password"
+            placeholder="ADMIN_MAP_KEY"
+          />
+        </label>
+        <a id="map-link" class="btn btn-ghost" href="/admin/map.html">Live map</a>
+      </div>
+    </header>
+
+    <main class="links-layout">
+      <section class="links-card">
+        <h2>Create link</h2>
+        <p class="links-help">
+          Enter the characters you want in the link (e.g. <code>ali</code>, <code>sara1</code>).
+          That same text is stored with their location.
+        </p>
+        <label class="key-field">
+          <span>Your code (in the link)</span>
+          <input
+            id="invite-code"
+            type="text"
+            maxlength="32"
+            placeholder="ali"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <p class="link-preview">
+          Link preview: <code id="link-preview">…/?c=</code>
+        </p>
+        <label class="key-field">
+          <span>Private note (optional)</span>
+          <input id="invite-label" type="text" maxlength="80" placeholder="Ali — family" />
+        </label>
+        <button id="create-btn" class="btn" type="button">Copy link</button>
+        <div id="result-box" class="result-box" hidden>
+          <p><strong>Code:</strong> <span id="result-code"></span></p>
+          <p><strong>Link:</strong></p>
+          <code id="result-link"></code>
+          <button id="copy-btn" class="btn btn-ghost" type="button">Copy again</button>
+        </div>
+      </section>
+
+      <section class="links-card">
+        <div class="links-card-head">
+          <h2>Your codes</h2>
+          <button id="refresh-btn" class="btn btn-ghost" type="button">Refresh</button>
+        </div>
+        <ul id="invite-list" class="invite-list"></ul>
+      </section>
+    </main>
+
+    <script src="/admin/links.js?v=2"></script>
+  </body>
+</html>

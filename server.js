@@ -12,10 +12,21 @@ const cors = require("cors");
 const { getLocations, saveLocation } = require("./lib/storage");
 const { reverseGeocode } = require("./lib/geocode");
 const {
+  normalizeCode,
+  codeKey,
+  listInvites,
+  createInvite,
+  deleteInvite,
+  labelsByCode,
+} = require("./lib/invites");
+const {
   appendLocationToSheet,
   sheetsConfigStatus,
   fetchLatestDevicesFromSheet,
   upgradeSheetHeaders,
+  createInviteInSheet,
+  deleteInviteFromSheet,
+  fetchInvitesFromSheet,
 } = require("./lib/googleSheets");
 
 const app = express();
@@ -74,6 +85,7 @@ function validateLocationBody(body) {
     ["language", 40],
     ["timezone", 80],
     ["userAgent", 320],
+    ["inviteCode", 32],
   ];
   for (const [key, max] of optionalStrings) {
     const value = body[key];
@@ -83,6 +95,50 @@ function validateLocationBody(body) {
   }
 
   return null;
+}
+
+function requireAdmin(req, res) {
+  const expected = getAdminKey();
+  if (!expected) {
+    res.status(503).json({ ok: false, error: "ADMIN_MAP_KEY is not set." });
+    return null;
+  }
+  const provided = String(req.query.key || req.get("x-admin-key") || "").trim();
+  if (provided !== expected) {
+    res.status(401).json({ ok: false, error: "Invalid admin key." });
+    return null;
+  }
+  return expected;
+}
+
+async function loadInviteLabels() {
+  const local = await labelsByCode();
+  try {
+    const sheet = await fetchInvitesFromSheet();
+    if (sheet.ok && Array.isArray(sheet.invites)) {
+      for (const invite of sheet.invites) {
+        const code = normalizeCode(invite.code);
+        if (!code) continue;
+        if (invite.label) local[code] = String(invite.label);
+        else if (!local[code]) local[code] = "";
+      }
+    }
+  } catch (error) {
+    console.warn("Sheets invites unavailable:", error.message);
+  }
+  return local;
+}
+
+function attachInviteLabels(devices, labels) {
+  return (devices || []).map((device) => {
+    const code = normalizeCode(device.inviteCode);
+    const label = code ? labels[codeKey(code)] || labels[code] || "" : "";
+    return {
+      ...device,
+      inviteCode: code || device.inviteCode || "",
+      inviteLabel: label,
+    };
+  });
 }
 
 function pickDeviceFields(body) {
@@ -151,6 +207,7 @@ function latestDevicesFromLocal(locations) {
         screen: entry.screen || "",
         language: entry.language || "",
         timezone: entry.timezone || "",
+        inviteCode: entry.inviteCode || "",
       });
     }
   }
@@ -182,14 +239,7 @@ function mergeLatestDevices(sheetDevices, localDevices) {
  * Latest pin per device (Sheets when available, else local JSON).
  */
 app.get("/api/admin/live", async (req, res) => {
-  const expected = getAdminKey();
-  if (!expected) {
-    return res.status(503).json({ ok: false, error: "ADMIN_MAP_KEY is not set." });
-  }
-  const provided = String(req.query.key || req.get("x-admin-key") || "").trim();
-  if (provided !== expected) {
-    return res.status(401).json({ ok: false, error: "Invalid admin key." });
-  }
+  if (!requireAdmin(req, res)) return;
 
   try {
     let sheetDevices = [];
@@ -207,7 +257,11 @@ app.get("/api/admin/live", async (req, res) => {
 
     const locations = await getLocations();
     const localDevices = latestDevicesFromLocal(locations);
-    const devices = mergeLatestDevices(sheetDevices, localDevices);
+    const labels = await loadInviteLabels();
+    const devices = attachInviteLabels(
+      mergeLatestDevices(sheetDevices, localDevices),
+      labels
+    );
     const source =
       sheetOk && localDevices.length
         ? "merged"
@@ -223,18 +277,116 @@ app.get("/api/admin/live", async (req, res) => {
 });
 
 /**
+ * GET /api/admin/invites?key=...
+ * List invite codes (local + Sheets).
+ */
+app.get("/api/admin/invites", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const byCode = new Map();
+    for (const invite of await listInvites()) {
+      byCode.set(codeKey(invite.code), invite);
+    }
+    try {
+      const sheet = await fetchInvitesFromSheet();
+      if (sheet.ok && Array.isArray(sheet.invites)) {
+        for (const invite of sheet.invites) {
+          const code = normalizeCode(invite.code);
+          if (!code) continue;
+          const key = codeKey(code);
+          const prev = byCode.get(key);
+          byCode.set(key, {
+            code: prev?.code || code,
+            label: invite.label || prev?.label || "",
+            createdAt: invite.createdAt || prev?.createdAt || "",
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("Sheets invites list failed:", error.message);
+    }
+
+    const invites = [...byCode.values()].sort(
+      (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    );
+    res.json({ ok: true, count: invites.length, invites });
+  } catch (error) {
+    console.error("List invites failed:", error);
+    res.status(500).json({ ok: false, error: "Could not list invites." });
+  }
+});
+
+/**
+ * POST /api/admin/invites?key=...
+ * Body: { code, label? } — uses YOUR code in ?c=... (not random).
+ */
+app.post("/api/admin/invites", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const code =
+      typeof req.body?.code === "string" ? req.body.code : "";
+    const label =
+      typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 80) : "";
+    const invite = await createInvite({ code, label });
+
+    try {
+      await createInviteInSheet(invite);
+    } catch (error) {
+      console.warn("Sheets invite create failed (local invite kept):", error.message);
+    }
+
+    const proto = req.get("x-forwarded-proto") || req.protocol || "https";
+    const host = req.get("x-forwarded-host") || req.get("host");
+    const origin = `${proto}://${host}`.replace(/\/$/, "");
+    const link = `${origin}/?c=${encodeURIComponent(invite.code)}`;
+
+    res.status(201).json({ ok: true, invite, link });
+  } catch (error) {
+    console.error("Create invite failed:", error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      ok: false,
+      error: error.message || "Could not create invite.",
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/invites/:code?key=...
+ * Remove an invite code from local store (+ Sheets when available).
+ */
+app.delete("/api/admin/invites/:code", async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  try {
+    const code = normalizeCode(req.params.code);
+    const result = await deleteInvite(code);
+
+    try {
+      await deleteInviteFromSheet(code);
+    } catch (error) {
+      console.warn("Sheets invite delete failed (local delete kept):", error.message);
+    }
+
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error("Delete invite failed:", error);
+    const status = error.statusCode || 500;
+    res.status(status).json({
+      ok: false,
+      error: error.message || "Could not delete invite.",
+    });
+  }
+});
+
+/**
  * POST /api/admin/upgrade-sheet?key=...
  * Asks Apps Script to rewrite the full header row (needs new Code.gs deployed).
  */
 app.post("/api/admin/upgrade-sheet", async (req, res) => {
-  const expected = getAdminKey();
-  if (!expected) {
-    return res.status(503).json({ ok: false, error: "ADMIN_MAP_KEY is not set." });
-  }
-  const provided = String(req.query.key || req.get("x-admin-key") || "").trim();
-  if (provided !== expected) {
-    return res.status(401).json({ ok: false, error: "Invalid admin key." });
-  }
+  if (!requireAdmin(req, res)) return;
 
   try {
     const result = await upgradeSheetHeaders();
@@ -271,6 +423,7 @@ app.post("/api/locations", async (req, res) => {
       sessionId = "",
     } = req.body;
     const device = pickDeviceFields(req.body);
+    const inviteCode = normalizeCode(req.body.inviteCode);
 
     // Geocode the first fix; live pings stay as coordinates to avoid rate limits.
     const baseLocation =
@@ -278,8 +431,9 @@ app.post("/api/locations", async (req, res) => {
         ? `${latitude}, ${longitude}`
         : await reverseGeocode(latitude, longitude);
 
-    // Keep phone identity visible even if Apps Script still has the old 7 columns.
+    // Match sheet style: address · Code: xxx · Device: … · ID: …
     const deviceSummary = [
+      inviteCode && `Code: ${inviteCode}`,
       device.deviceName && `Device: ${device.deviceName}`,
       device.deviceId && `ID: ${device.deviceId.slice(0, 8)}`,
       device.model && device.model !== "Unknown" ? device.model : "",
@@ -302,6 +456,7 @@ app.post("/api/locations", async (req, res) => {
       exactLocation,
       type,
       sessionId,
+      inviteCode,
       ...device,
     });
 
