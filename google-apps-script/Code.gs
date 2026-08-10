@@ -1,14 +1,17 @@
 /**
  * PinTrail → Google Sheets receiver
  *
- * === UPGRADE (required for Invite Code + Invites tab) ===
+ * === MUST REDEPLOY after any Code.gs change ===
  * 1) Open your Location Sharing spreadsheet
  * 2) Extensions → Apps Script
  * 3) Replace ALL code with this file → Save
- * 4) Select UPGRADE_HEADERS_NOW → Run → Allow permissions
- * 5) Deploy → Manage deployments → pencil (Edit) → Version: New version
- *    → Execute as: Me → Who has access: Anyone → Deploy
- * 6) Keep the same /exec URL in .env / Vercel
+ * 4) Run UPGRADE_HEADERS_NOW → then FIX_LAT_LNG_FORMATS_NOW
+ * 5) Optional: Run REPAIR_LAT_LNG_NOW (fixes old rows that show dates / coords in Exact Location)
+ * 6) Deploy → Manage deployments → pencil → Version: New version → Deploy
+ * 7) Keep the same /exec URL in .env / Vercel
+ *
+ * Latitude + Longitude are always written as NUMBERS into those columns (current + live).
+ * Exact Location is address / "Live update" + device summary — never the place for coords.
  */
 
 var SHEET_NAME = "Locations";
@@ -58,6 +61,45 @@ function resolveInviteCode_(data) {
   return match ? match[1] : "";
 }
 
+/** Pull "lat, lng" from the start of Exact Location (old live-row bug). */
+function parseCoordsFromText_(text) {
+  var m = String(text || "").match(
+    /^\s*(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/
+  );
+  if (!m) return null;
+  var lat = Number(m[1]);
+  var lng = Number(m[2]);
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat: lat, lng: lng };
+}
+
+/** Pull lat/lng from a Google Maps URL. */
+function parseCoordsFromMapsUrl_(url) {
+  var m = String(url || "").match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+  if (!m) return null;
+  var lat = Number(m[1]);
+  var lng = Number(m[2]);
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  return { lat: lat, lng: lng };
+}
+
+/**
+ * Exact Location must not store raw coordinates as the main value.
+ * Strip a leading "31.41, 74.25 · " prefix left by older live writes.
+ */
+function sanitizeExactLocation_(exact, type) {
+  var s = String(exact || "").trim();
+  if (/^\s*-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+\s*$/.test(s)) {
+    return type === "live" ? "Live update" : "Address unavailable";
+  }
+  s = s.replace(/^\s*-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+\s*(·\s*)?/, "").trim();
+  if (!s) {
+    return type === "live" ? "Live update" : "Address unavailable";
+  }
+  return s;
+}
+
 function findHeaderCol_(sheet, headerName) {
   var lastCol = Math.max(sheet.getLastColumn(), 1);
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -81,28 +123,31 @@ function setCell_(sheet, row, col, value) {
 }
 
 /**
- * Make sure column A is Invite Code. Inserts a new first column when needed
- * so existing data shifts right instead of getting mis-labeled.
+ * Find a header column, or append a new one at the end.
+ * Never insertColumn/deleteColumn — that shifts lat/lng into the wrong places.
  */
-function ensureInviteCodeFirstColumn_(sheet) {
-  var first = String(sheet.getRange(1, 1).getValue() || "").trim();
-  if (first === "Invite Code") return;
-  var existing = findHeaderCol_(sheet, "Invite Code");
-  sheet.insertColumnBefore(1);
-  if (existing > 0) {
-    // Old invite column shifted by +1; clear its header to avoid duplicates.
-    sheet.getRange(1, existing + 1).setValue("");
-  }
+function ensureHeaderColumn_(sheet, headerName) {
+  var col = findHeaderCol_(sheet, headerName);
+  if (col > 0) return col;
+  col = Math.max(sheet.getLastColumn(), 0) + 1;
+  sheet.getRange(1, col).setValue(headerName);
+  return col;
 }
 
-/** Delete columns the user no longer wants (Received At, Language, User Agent). */
+/** Clear obsolete columns in place (do not delete — deleting shifts GPS columns). */
 function removeObsoleteColumns_(sheet) {
+  var lastRow = Math.max(sheet.getLastRow(), 1);
   for (var i = sheet.getLastColumn(); i >= 1; i--) {
     var name = String(sheet.getRange(1, i).getValue() || "").trim();
     if (OBSOLETE_HEADERS.indexOf(name) !== -1) {
-      sheet.deleteColumn(i);
+      sheet.getRange(1, i, lastRow, i).clearContent();
     }
   }
+}
+
+/** @deprecated — kept so old Run menus do not break */
+function ensureInviteCodeFirstColumn_(sheet) {
+  ensureHeaderColumn_(sheet, "Invite Code");
 }
 
 /** Write one cell by header name on an existing row. */
@@ -169,15 +214,100 @@ function UPGRADE_HEADERS_NOW() {
   }
   ss.setSpreadsheetTimeZone(LAHORE_TZ);
   var sheet = getOrCreateSheet_(ss);
-  ensureInviteCodeFirstColumn_(sheet);
   removeObsoleteColumns_(sheet);
   ensureHeaders_(sheet);
+  fixLatLngFormats_(sheet);
   ensureInviteSheet_(ss);
   BACKFILL_INVITE_CODES_NOW();
   Logger.log("Headers updated on tab: " + sheet.getName());
   Logger.log("Timezone: " + LAHORE_TZ);
   Logger.log("Columns: " + HEADERS.join(" | "));
-  Logger.log("Removed: Received At, Language, User Agent. Lat=B, Lng=C.");
+  Logger.log(
+    "Lat col=" +
+      findHeaderCol_(sheet, "Latitude") +
+      " Lng col=" +
+      findHeaderCol_(sheet, "Longitude")
+  );
+}
+
+/**
+ * Run if Latitude/Longitude show as dates (1/30/1900) or #NUM!.
+ * Forces columns B/C to number format.
+ */
+function FIX_LAT_LNG_FORMATS_NOW() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error("Open this script from the Google Sheet (Extensions → Apps Script).");
+  }
+  ss.setSpreadsheetTimeZone(LAHORE_TZ);
+  var sheet = getOrCreateSheet_(ss);
+  removeObsoleteColumns_(sheet);
+  ensureHeaders_(sheet);
+  fixLatLngFormats_(sheet);
+  Logger.log("Latitude/Longitude columns forced to number format.");
+}
+
+/**
+ * Repair existing rows:
+ * - Put numeric lat/lng into Latitude / Longitude columns
+ * - Strip leading coords out of Exact Location
+ * Source: Exact Location prefix, else Google Maps URL, else keep cell if already a valid number.
+ */
+function REPAIR_LAT_LNG_NOW() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error("Open this script from the Google Sheet (Extensions → Apps Script).");
+  }
+  var sheet = getOrCreateSheet_(ss);
+  ensureHeaders_(sheet);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log("No data rows to repair.");
+    return;
+  }
+
+  var latCol = ensureHeaderColumn_(sheet, "Latitude");
+  var lngCol = ensureHeaderColumn_(sheet, "Longitude");
+  var exactCol = ensureHeaderColumn_(sheet, "Exact Location");
+  var mapsCol = findHeaderCol_(sheet, "Google Maps");
+  var typeCol = findHeaderCol_(sheet, "Type");
+  var fixed = 0;
+
+  for (var row = 2; row <= lastRow; row++) {
+    var exact = String(sheet.getRange(row, exactCol).getDisplayValue() || "");
+    var mapsUrl = mapsCol > 0 ? String(sheet.getRange(row, mapsCol).getDisplayValue() || "") : "";
+    var type =
+      typeCol > 0 ? String(sheet.getRange(row, typeCol).getDisplayValue() || "") : "";
+
+    var coords = parseCoordsFromText_(exact) || parseCoordsFromMapsUrl_(mapsUrl);
+    if (!coords) {
+      var latVal = Number(sheet.getRange(row, latCol).getValue());
+      var lngVal = Number(sheet.getRange(row, lngCol).getValue());
+      if (
+        isFinite(latVal) &&
+        isFinite(lngVal) &&
+        latVal >= -90 &&
+        latVal <= 90 &&
+        lngVal >= -180 &&
+        lngVal <= 180
+      ) {
+        coords = { lat: latVal, lng: lngVal };
+      }
+    }
+    if (!coords) continue;
+
+    sheet.getRange(row, latCol).setNumberFormat("0.00000000").setValue(coords.lat);
+    sheet.getRange(row, lngCol).setNumberFormat("0.00000000").setValue(coords.lng);
+
+    var cleaned = sanitizeExactLocation_(exact, type === "live" ? "live" : "current");
+    if (cleaned !== exact) {
+      setTextCell_(sheet, row, exactCol, cleaned);
+    }
+    fixed++;
+  }
+
+  fixLatLngFormats_(sheet);
+  Logger.log("Repaired " + fixed + " row(s). Lat/Lng are numbers; Exact Location has no leading coords.");
 }
 
 /** Optional: write a full test row with device columns. */
@@ -227,6 +357,7 @@ function doPost(e) {
 
     var sheet = getOrCreateSheet_(ss);
     ensureInviteCodeFirstColumn_(sheet);
+    removeObsoleteColumns_(sheet);
     ensureHeaders_(sheet);
 
     var mapsUrl =
@@ -252,8 +383,8 @@ function doPost(e) {
 }
 
 /**
- * Write one row in fixed HEADERS order (avoids wrong lat/lng from shifted columns).
- * A = Invite Code, B = Latitude, C = Longitude, …
+ * Write one row by HEADER NAME (not fixed A/B/C).
+ * So Latitude/Longitude always land in the correct columns for current + live.
  */
 function writeLocationRow_(sheet, data) {
   ensureHeaders_(sheet);
@@ -262,38 +393,68 @@ function writeLocationRow_(sheet, data) {
   var lat = Number(data.latitude);
   var lng = Number(data.longitude);
   var accuracy = Number(data.accuracy);
-  var deviceDate = data.timestamp ? new Date(Number(data.timestamp)) : "";
+  if (!isFinite(lat) || !isFinite(lng)) {
+    throw new Error("Invalid latitude/longitude: " + data.latitude + ", " + data.longitude);
+  }
+
+  var rowType = data.type === "live" ? "live" : "current";
+  var exactLocation = sanitizeExactLocation_(data.exactLocation || "", rowType);
+
+  var deviceTs = "";
+  if (data.deviceTimestampLahore) {
+    deviceTs = String(data.deviceTimestampLahore);
+  } else if (data.timestamp) {
+    deviceTs = formatLahore_(new Date(Number(data.timestamp))) + " PKT";
+  } else if (data.receivedAt) {
+    deviceTs = formatLahore_(new Date(data.receivedAt)) + " PKT";
+  } else {
+    deviceTs = formatLahore_(new Date()) + " PKT";
+  }
+
   var mapsUrl =
     data.mapsUrl ||
     "https://www.google.com/maps?q=" + lat + "," + lng;
 
-  var values = [
-    inviteCode,
-    lat,
-    lng,
-    accuracy,
-    data.exactLocation || "",
-    deviceDate || "",
-    mapsUrl,
-    data.type || "current",
-    data.sessionId || "",
-    data.deviceId || "",
-    data.deviceName || "",
-    data.model || "",
-    data.os || "",
-    data.browser || "",
-    data.screen || "",
-    data.timezone || "",
-  ];
-
   var row = sheet.getLastRow() + 1;
   if (row < 2) row = 2;
-  sheet.getRange(row, 1, row, values.length).setValues([values]);
-  // Keep full GPS precision visible
-  sheet.getRange(row, 2, row, 3).setNumberFormat("0.00000000");
-  sheet.getRange(row, 6).setNumberFormat("M/d/yyyy H:mm:ss");
+
+  var latCol = ensureHeaderColumn_(sheet, "Latitude");
+  var lngCol = ensureHeaderColumn_(sheet, "Longitude");
+
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Invite Code"), inviteCode);
+  // Numbers + number format (never date format) — same for current and live
+  sheet.getRange(row, latCol).setNumberFormat("0.00000000").setValue(lat);
+  sheet.getRange(row, lngCol).setNumberFormat("0.00000000").setValue(lng);
+  sheet
+    .getRange(row, ensureHeaderColumn_(sheet, "Accuracy (m)"))
+    .setNumberFormat("0.####")
+    .setValue(accuracy);
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Exact Location"), exactLocation);
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Device Timestamp"), deviceTs);
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Google Maps"), mapsUrl);
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Type"), rowType);
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Session ID"), data.sessionId || "");
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Device ID"), data.deviceId || "");
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Device Name"), data.deviceName || "");
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Model"), data.model || "");
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "OS"), data.os || "");
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Browser"), data.browser || "");
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Screen"), data.screen || "");
+  setTextCell_(sheet, row, ensureHeaderColumn_(sheet, "Timezone"), data.timezone || "");
 
   return row;
+}
+
+/** Force Latitude/Longitude columns to number format (fixes 1/30/1900 display). */
+function fixLatLngFormats_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  var latCol = findHeaderCol_(sheet, "Latitude");
+  var lngCol = findHeaderCol_(sheet, "Longitude");
+  var tsCol = findHeaderCol_(sheet, "Device Timestamp");
+  if (latCol > 0) sheet.getRange(2, latCol, lastRow, latCol).setNumberFormat("0.00000000");
+  if (lngCol > 0) sheet.getRange(2, lngCol, lastRow, lngCol).setNumberFormat("0.00000000");
+  if (tsCol > 0) sheet.getRange(2, tsCol, lastRow, tsCol).setNumberFormat("@");
 }
 
 /**
@@ -582,14 +743,11 @@ function ensureInviteSheet_(ss) {
 
 function ensureHeaders_(sheet) {
   removeObsoleteColumns_(sheet);
-  var width = HEADERS.length;
-  sheet.getRange(1, 1, 1, width).setValues([HEADERS]);
+  for (var i = 0; i < HEADERS.length; i++) {
+    ensureHeaderColumn_(sheet, HEADERS[i]);
+  }
   sheet.setFrozenRows(1);
-  var lastRow = Math.max(sheet.getLastRow(), 2);
-  // B/C = Latitude / Longitude
-  sheet.getRange(2, 2, lastRow, 3).setNumberFormat("0.00000000");
-  // F = Device Timestamp
-  sheet.getRange(2, 6, lastRow, 6).setNumberFormat("M/d/yyyy H:mm:ss");
+  fixLatLngFormats_(sheet);
 }
 
 function json_(obj) {

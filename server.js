@@ -425,11 +425,10 @@ app.post("/api/locations", async (req, res) => {
     const device = pickDeviceFields(req.body);
     const inviteCode = normalizeCode(req.body.inviteCode);
 
-    // Geocode the first fix; live pings stay as coordinates to avoid rate limits.
+    // Address for Exact Location only — lat/lng always go in their own columns.
+    // Live updates skip reverse-geocode (rate limits) but still save numeric lat/lng.
     const baseLocation =
-      type === "live"
-        ? `${latitude}, ${longitude}`
-        : await reverseGeocode(latitude, longitude);
+      type === "live" ? "Live update" : await reverseGeocode(latitude, longitude);
 
     // Match sheet style: address · Code: xxx · Device: … · ID: …
     const deviceSummary = [
